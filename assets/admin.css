@@ -1,0 +1,160 @@
+.alu-page .alu-intro {
+	max-width: 760px;
+	color: #50575e;
+}
+
+.alu-page .alu-meta {
+	margin-top: 2px;
+	color: #646970;
+	font-size: 12px;
+}
+
+.alu-page .alu-muted {
+	color: #8c8f94;
+}
+
+.alu-page .alu-via {
+	display: inline-block;
+	margin-top: 2px;
+	padding: 0 6px;
+	border-radius: 3px;
+	background: #f0f0f1;
+	color: #50575e;
+	font-size: 11px;
+	line-height: 18px;
+}
+
+.alu-page .alu-via-cli,
+.alu-page .alu-via-cron {
+	background: #fcf0e3;
+	color: #8a4d00;
+}
+
+.alu-page .alu-via-ability,
+.alu-page .alu-via-app-password {
+	background: #f3eefc;
+	color: #5b2fa8;
+}
+
+.alu-page .alu-via-rest {
+	background: #e9f2fb;
+	color: #135e96;
+}
+
+.alu-page .column-undo {
+	width: 130px;
+}
+
+.alu-page .column-user {
+	width: 160px;
+}
+
+.alu-page .column-when {
+	width: 120px;
+}
+
+.alu-page .alu-status-undone {
+	color: #646970;
+}
+
+.alu-page .alu-filters select,
+.alu-page .alu-filters input {
+	margin-right: 4px;
+}
+
+.alu-page .alu-filters select {
+	max-width: 150px;
+}
+
+.alu-page .alu-filters input[type="date"] {
+	max-width: 130px;
+}
+
+.alu-page .alu-filters .alu-object {
+	width: 140px;
+}
+
+.alu-page .alu-filters label:not(.screen-reader-text) {
+	margin: 0 2px 0 4px;
+	line-height: 30px;
+}
+
+.alu-page .alu-facts th {
+	width: 140px;
+	padding: 8px 10px 8px 0;
+}
+
+.alu-page .alu-facts td {
+	padding: 8px 10px;
+}
+
+.alu-page .alu-set {
+	margin: 0;
+}
+
+.alu-page .alu-diff-table {
+	max-width: 1100px;
+	margin: 8px 0 16px;
+}
+
+.alu-page .alu-diff-table th[scope="row"] {
+	width: 220px;
+}
+
+.alu-page .alu-diff-table td {
+	width: 40%;
+	word-break: break-word;
+}
+
+.alu-page .alu-diff-table tr.alu-changed td {
+	background: #fcf9e8;
+}
+
+.alu-page .alu-json {
+	max-height: 320px;
+	margin: 0;
+	overflow: auto;
+	white-space: pre-wrap;
+	font-size: 12px;
+}
+
+.alu-page .alu-items {
+	margin: 0 0 0 18px;
+}
+
+.alu-page .alu-text-diff {
+	max-width: 1100px;
+	margin-bottom: 16px;
+	overflow: auto;
+}
+
+.alu-page .alu-diff-field {
+	margin: 16px 0 4px;
+}
+
+.alu-page .alu-actions {
+	margin: 16px 0;
+}
+
+.alu-page .alu-undo.is-busy {
+	opacity: 0.6;
+	pointer-events: none;
+}
+
+.alu-page .alu-conflict {
+	max-width: 1100px;
+}
+
+.alu-page .alu-purge {
+	margin-top: 32px;
+	padding-top: 8px;
+	border-top: 1px solid #dcdcde;
+}
+
+@media screen and (max-width: 782px) {
+	.alu-page .alu-filters input[type="date"],
+	.alu-page .alu-filters .alu-object {
+		max-width: 100%;
+		width: 100%;
+	}
+}
