@@ -1,0 +1,34 @@
+{
+	"$schema": "https://playground.wordpress.net/blueprint-schema.json",
+	"meta": {
+		"title": "Activity Log with Undo demo",
+		"author": "aryanjasala"
+	},
+	"landingPage": "/wp-admin/tools.php?page=activity-log-with-undo",
+	"preferredVersions": {
+		"php": "8.3",
+		"wp": "latest"
+	},
+	"features": {
+		"networking": true
+	},
+	"login": true,
+	"steps": [
+		{
+			"step": "installPlugin",
+			"pluginData": {
+				"resource": "git:directory",
+				"url": "https://github.com/aryanjasala/activity-log-with-undo",
+				"ref": "main"
+			},
+			"options": {
+				"activate": true,
+				"targetFolderName": "activity-log-with-undo"
+			}
+		},
+		{
+			"step": "runPHP",
+			"code": "<?php require_once '/wordpress/wp-load.php'; wp_set_current_user( 1 ); update_option( 'blogdescription', 'Recipes from a small kitchen' ); $id = wp_insert_post( array( 'post_title' => 'Lemon tart', 'post_status' => 'publish', 'post_content' => '<!-- wp:paragraph --><p>A short pastry case and a sharp lemon curd.</p><!-- /wp:paragraph -->' ) ); wp_update_post( array( 'ID' => $id, 'post_title' => 'Lemon tart with burnt sugar' ) ); $term = wp_insert_term( 'Desserts', 'category' ); if ( ! is_wp_error( $term ) ) { wp_update_term( $term['term_id'], 'category', array( 'name' => 'Sweet things' ) ); }"
+		}
+	]
+}
