@@ -18,9 +18,11 @@ function activity_log_with_undo_uninstall_site(): void {
 
 	delete_option( 'activity_log_with_undo_settings' );
 	delete_option( 'activity_log_with_undo_db_version' );
+	delete_option( 'activity_log_with_undo_cleanup' );
 	wp_unschedule_hook( 'activity_log_with_undo_purge' );
+	wp_unschedule_hook( 'activity_log_with_undo_cleanup' );
 
-	// One-time notices waiting for users.
+	// One-time notices waiting for users, rate-limit counters and the cached table size.
 	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- One-off cleanup on uninstall.
 	$wpdb->query( $wpdb->prepare( "DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s", $wpdb->esc_like( '_transient_activity_log_with_undo_' ) . '%', $wpdb->esc_like( '_transient_timeout_activity_log_with_undo_' ) . '%' ) );
 }

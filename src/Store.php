@@ -67,7 +67,7 @@ class Store {
 	 * @return string[]
 	 */
 	private static function formats( array $row ): array {
-		$numbers = array( 'id', 'actor_user_id', 'undoable', 'undone_by', 'undo_of' );
+		$numbers = array( 'id', 'actor_user_id', 'undoable', 'undone_by', 'undo_of', 'agent_request', 'approved_by' );
 
 		return array_map(
 			static function ( $column ) use ( $numbers ) {
@@ -298,10 +298,97 @@ class Store {
 		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Privacy eraser on the plugin's own table, in batches; the cache is bumped below.
 		$changed  = (int) $wpdb->query( $wpdb->prepare( "UPDATE %i SET actor_user_id = %d, ip = '' WHERE actor_user_id = %d LIMIT %d", $table, Entry::ERASED, $user_id, $limit ) );
 		$changed += (int) $wpdb->query( $wpdb->prepare( "UPDATE %i SET object_label = %s, before_state = NULL, after_state = NULL, undoable = 0 WHERE object_type = 'user' AND object_id = %s AND object_label <> %s LIMIT %d", $table, '(removed)', (string) $user_id, '(removed)', $limit ) );
+		$changed += (int) $wpdb->query( $wpdb->prepare( 'UPDATE %i SET approved_by = %d WHERE approved_by = %d LIMIT %d', $table, Entry::ERASED, $user_id, $limit ) );
 		// phpcs:enable
 		$this->bump();
 
 		return $changed;
+	}
+
+	/**
+	 * How many entries each option has, for the clean-up of entries version 1 logged.
+	 *
+	 * @return array<string, int> Option name => entries. Network options are keyed `network:<name>`.
+	 */
+	public function option_entry_counts(): array {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- One-off scan of the plugin's own table, stored by the caller.
+		$rows   = $wpdb->get_results( $wpdb->prepare( "SELECT object_type, object_id, COUNT(*) AS n FROM %i WHERE object_type IN ('option','network_option') GROUP BY object_type, object_id", Schema::table() ), ARRAY_A );
+		$counts = array();
+		foreach ( (array) $rows as $row ) {
+			$key            = ( 'network_option' === $row['object_type'] ? 'network:' : '' ) . (string) $row['object_id'];
+			$counts[ $key ] = (int) $row['n'];
+		}
+
+		return $counts;
+	}
+
+	/**
+	 * Deletes up to $limit entries of the given options.
+	 *
+	 * @param string[] $names Option names; `network:<name>` for network options.
+	 * @param int      $limit Most rows to delete.
+	 * @return int Rows deleted.
+	 */
+	public function delete_option_entries( array $names, int $limit ): int {
+		global $wpdb;
+
+		$deleted = 0;
+		foreach ( array( 'option', 'network_option' ) as $type ) {
+			$prefix = 'network_option' === $type ? 'network:' : '';
+			$list   = array();
+			foreach ( $names as $name ) {
+				$name = (string) $name;
+				if ( '' === $prefix ? 0 !== strpos( $name, 'network:' ) : 0 === strpos( $name, $prefix ) ) {
+					$list[] = substr( $name, strlen( $prefix ) );
+				}
+			}
+
+			foreach ( array_chunk( $list, 100 ) as $chunk ) {
+				if ( $deleted >= $limit ) {
+					break 2;
+				}
+				$in = implode( ',', array_fill( 0, count( $chunk ), '%s' ) );
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQLPlaceholders.UnfinishedPrepare, WordPress.DB.PreparedSQLPlaceholders.ReplacementsWrongNumber -- $in is a list of placeholders; batched clean-up of the plugin's own table, the cache is bumped below.
+				$deleted += (int) $wpdb->query( $wpdb->prepare( "DELETE FROM %i WHERE object_type = %s AND object_id IN ({$in}) LIMIT %d", array_merge( array( Schema::table(), $type ), $chunk, array( max( 1, $limit - $deleted ) ) ) ) );
+			}
+		}
+		$this->bump();
+
+		return $deleted;
+	}
+
+	/**
+	 * Size of the table on disk in bytes, as the database reports it. 0 when unknown.
+	 *
+	 * Cached for a few minutes, so logging a change does not ask every time.
+	 *
+	 * @return int
+	 */
+	public function size(): int {
+		global $wpdb;
+
+		$cached = get_transient( 'activity_log_with_undo_size' );
+		if ( false !== $cached ) {
+			return (int) $cached;
+		}
+
+		// Some hosts and SQLite do not answer this; the size is then unknown, not an error on screen.
+		$quiet = $wpdb->suppress_errors();
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- The size of the plugin's own table, cached in a transient below.
+		$size = (int) $wpdb->get_var( $wpdb->prepare( 'SELECT data_length + index_length FROM information_schema.TABLES WHERE table_schema = DATABASE() AND table_name = %s', Schema::table() ) );
+		$wpdb->suppress_errors( $quiet );
+		set_transient( 'activity_log_with_undo_size', $size, 5 * MINUTE_IN_SECONDS );
+
+		return $size;
+	}
+
+	/**
+	 * Forgets the cached table size, after a clean-up.
+	 */
+	public function forget_size(): void {
+		delete_transient( 'activity_log_with_undo_size' );
 	}
 
 	/**
@@ -313,6 +400,7 @@ class Store {
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Emptying the plugin's own table; the cache is bumped below.
 		$wpdb->query( $wpdb->prepare( 'TRUNCATE TABLE %i', Schema::table() ) );
 		$this->bump();
+		$this->forget_size();
 	}
 
 	/**

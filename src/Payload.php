@@ -64,13 +64,44 @@ final class Payload {
 	}
 
 	/**
+	 * Why a state was left out: it was over the size limit.
+	 */
+	public const TOO_BIG = 'too_big';
+
+	/**
+	 * Why a state was left out: the log table was over its size limit.
+	 */
+	public const LOG_FULL = 'log_full';
+
+	/**
 	 * The marker stored instead of a state that is over the size limit.
 	 *
-	 * @param int $bytes Size of the state that was left out.
+	 * @param int    $bytes  Size of the state that was left out.
+	 * @param string $reason TOO_BIG or LOG_FULL.
 	 * @return string
 	 */
-	public static function over_limit( int $bytes ): string {
-		return (string) wp_json_encode( array( 'over_limit' => $bytes ) );
+	public static function over_limit( int $bytes, string $reason = self::TOO_BIG ): string {
+		$marker = array( 'over_limit' => $bytes );
+		if ( self::LOG_FULL === $reason ) {
+			$marker['reason'] = self::LOG_FULL;
+		}
+
+		return (string) wp_json_encode( $marker );
+	}
+
+	/**
+	 * Why a state was left out: TOO_BIG, LOG_FULL, or '' when it was kept.
+	 *
+	 * @param string|null $stored Stored JSON.
+	 * @return string
+	 */
+	public static function left_out_reason( ?string $stored ): string {
+		if ( ! self::left_out( $stored ) ) {
+			return '';
+		}
+		$data = json_decode( (string) $stored, true );
+
+		return is_array( $data ) && self::LOG_FULL === ( $data['reason'] ?? '' ) ? self::LOG_FULL : self::TOO_BIG;
 	}
 
 	/**

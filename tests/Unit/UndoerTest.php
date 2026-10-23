@@ -9,11 +9,13 @@ namespace AryanX\ActivityLogWithUndo\Tests\Unit;
 
 use AryanX\ActivityLogWithUndo\Entry;
 use AryanX\ActivityLogWithUndo\Logger;
+use AryanX\ActivityLogWithUndo\Recorders\OptionsRecorder;
 use AryanX\ActivityLogWithUndo\Recorders\Registry;
 use AryanX\ActivityLogWithUndo\Settings;
 use AryanX\ActivityLogWithUndo\Undoer;
 use Brain\Monkey\Actions;
 use Brain\Monkey\Filters;
+use Brain\Monkey\Functions;
 
 final class UndoerTest extends LogTestCase {
 
@@ -225,6 +227,97 @@ final class UndoerTest extends LogTestCase {
 		$this->assertSame( 0, $written['undoable'] );
 		$this->assertSame( $entry->id, $written['undo_of'] );
 		$this->assertSame( $result['entries'][0], $this->rows[ $entry->id ]['undone_by'] );
+	}
+
+	/**
+	 * An undoer that knows the options recorder too.
+	 *
+	 * @return Undoer
+	 */
+	private function undoer_with_options(): Undoer {
+		Functions\when( 'get_registered_settings' )->justReturn( array() );
+
+		return new Undoer( $this->store, $this->logger, new Registry( array( $this->recorder, new OptionsRecorder( $this->logger ) ), new Settings() ) );
+	}
+
+	/**
+	 * A term change and, in the same request, a theme's internal counter, as version 1 logged them.
+	 *
+	 * @param string $option Option logged next to the change.
+	 * @return array{0: Entry, 1: Entry}
+	 */
+	private function change_with_option( string $option ): array {
+		$this->options[ $option ] = '2';
+		$change                   = $this->entry(
+			array(
+				'change_set' => 'request',
+				'object_id'  => 'a',
+				'before'     => 'old',
+				'after'      => 'new',
+			)
+		);
+		$internal                 = $this->entry(
+			array(
+				'change_set'  => 'request',
+				'recorder'    => 'options',
+				'event'       => 'option_updated',
+				'object_type' => 'option',
+				'object_id'   => $option,
+				'before'      => '1',
+				'after'       => '2',
+			)
+		);
+
+		return array( $change, $internal );
+	}
+
+	public function test_another_plugins_state_logged_in_the_same_request_is_left_out_of_the_undo(): void {
+		list( $change, $internal ) = $this->change_with_option( 'aryanx_content_version' );
+		$undoer                    = $this->undoer_with_options();
+
+		$this->assertSame( array( $change->id ), array_column( array_map( 'get_object_vars', $undoer->members( $change ) ), 'id' ) );
+		$result = $undoer->undo( $change->id );
+
+		$this->assertSame( array( $change->id ), $result['undone'] );
+		$this->assertSame( 'old', $this->things['a'] );
+		$this->assertSame( '2', $this->options['aryanx_content_version'] );
+		$this->assertArrayNotHasKey( 'undone_by', $this->rows[ $internal->id ] );
+	}
+
+	public function test_a_setting_saved_in_the_same_request_is_still_undone_with_it(): void {
+		list( $change, $setting ) = $this->change_with_option( 'blogname' );
+
+		$result = $this->undoer_with_options()->undo( $change->id );
+
+		$this->assertSame( array( $setting->id, $change->id ), $result['undone'] );
+		$this->assertSame( '1', $this->options['blogname'] );
+	}
+
+	public function test_an_old_entry_of_an_internal_option_can_still_be_undone_on_its_own(): void {
+		list( , $internal ) = $this->change_with_option( 'aryanx_content_version' );
+
+		$result = $this->undoer_with_options()->undo( $internal->id );
+
+		$this->assertSame( array( $internal->id ), $result['undone'] );
+		$this->assertSame( '1', $this->options['aryanx_content_version'] );
+		$this->assertSame( 'new', $this->things['a'] );
+	}
+
+	public function test_the_change_set_filter_can_leave_entries_out_but_never_the_entry_itself(): void {
+		$this->things = array(
+			'a' => 'a2',
+			'b' => 'b2',
+		);
+		$first        = $this->entry( array( 'change_set' => 'one', 'object_id' => 'a', 'before' => 'a1', 'after' => 'a2' ) );
+		$second       = $this->entry( array( 'change_set' => 'one', 'object_id' => 'b', 'before' => 'b1', 'after' => 'b2' ) );
+		$foreign      = $this->entry( array( 'change_set' => 'two', 'object_id' => 'c', 'before' => 'c1', 'after' => 'c2' ) );
+		Filters\expectApplied( 'activity_log_with_undo_change_set_entries' )->once()->with( \Mockery::type( 'array' ), \Mockery::type( Entry::class ) )->andReturn( array( $foreign ) );
+
+		$members = $this->undoer()->members( $first );
+
+		$this->assertCount( 1, $members );
+		$this->assertSame( $first->id, $members[0]->id );
+		$this->assertNotSame( $second->id, $members[0]->id );
 	}
 
 	public function test_missing_entries_are_a_404(): void {

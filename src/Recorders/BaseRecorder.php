@@ -60,9 +60,10 @@ abstract class BaseRecorder implements Recorder {
 	 * @param mixed      $after       State after.
 	 * @param bool       $undoable    Whether it can be reversed.
 	 * @param bool       $network     Log on the main site.
+	 * @param int        $limit       A lower size limit in bytes for the states, or 0 for the usual one.
 	 * @return int Entry ID or 0.
 	 */
-	protected function record( string $event, string $object_type, $object_id, string $label, $before, $after, bool $undoable, bool $network = false ): int {
+	protected function record( string $event, string $object_type, $object_id, string $label, $before, $after, bool $undoable, bool $network = false, int $limit = 0 ): int {
 		return $this->logger->log(
 			array(
 				'event'        => $event,
@@ -74,6 +75,7 @@ abstract class BaseRecorder implements Recorder {
 				'after'        => $after,
 				'undoable'     => $undoable,
 				'network'      => $network,
+				'limit'        => $limit,
 			)
 		);
 	}

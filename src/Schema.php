@@ -22,7 +22,7 @@ final class Schema {
 	/**
 	 * Bump when the table changes.
 	 */
-	public const DB_VERSION = '1';
+	public const DB_VERSION = '2';
 
 	/**
 	 * Table name for the current site.
@@ -70,6 +70,8 @@ final class Schema {
 	public static function install(): void {
 		global $wpdb;
 
+		$installed = get_option( self::VERSION_OPTION );
+
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 
 		$table   = self::table();
@@ -93,6 +95,9 @@ final class Schema {
 				undoable tinyint(1) NOT NULL DEFAULT 0,
 				undone_by bigint(20) unsigned NULL,
 				undo_of bigint(20) unsigned NULL,
+				agent varchar(191) NOT NULL DEFAULT '',
+				agent_request bigint(20) unsigned NOT NULL DEFAULT 0,
+				approved_by bigint(20) NOT NULL DEFAULT 0,
 				PRIMARY KEY  (id),
 				KEY created_gmt (created_gmt),
 				KEY change_set (change_set),
@@ -103,6 +108,13 @@ final class Schema {
 		);
 
 		update_option( self::VERSION_OPTION, self::DB_VERSION );
+
+		// Version 1 logged every option, including other plugins' internal state. Offer to delete those entries.
+		if ( false !== $installed && version_compare( (string) $installed, '2', '<' ) ) {
+			Cleanup::flag();
+		} elseif ( false === $installed ) {
+			Cleanup::nothing_to_do();
+		}
 	}
 
 	/**

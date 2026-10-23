@@ -1,17 +1,34 @@
+const { request: playwrightRequest } = require( '@playwright/test' );
 const { test, expect, wp, wpEval } = require( './utils' );
+const { BASE_URL } = require( './utils/config' );
 
 const PAGE = '/wp-admin/tools.php?page=activity-log-with-undo';
 const HELPER = 'alu-e2e-helper.php';
+const FIXTURE = 'alu-e2e-fixture.php';
+const FIXTURE_OPTIONS = [ 'alu_e2e_rate', 'alu_e2e_early', 'alu_e2e_freeze', 'alu_e2e_always', 'alu_e2e_internal', 'alu_e2e_index', 'alu_e2e_registered', 'alu_e2e_content_version', 'activity_log_with_undo_cleanup' ];
 
-// Empties the log and the settings, so each test starts from nothing.
+// Empties the log, the settings and the rate-limit counters, so each test starts from nothing.
 const reset = () => {
-	wpEval( 'AryanX\\ActivityLogWithUndo\\Plugin::instance()->store()->truncate();' );
-	try {
-		wp( 'option', 'delete', 'activity_log_with_undo_settings' );
-	} catch ( error ) {
-		// Not set.
+	for ( const name of [ 'activity_log_with_undo_settings', ...FIXTURE_OPTIONS ] ) {
+		try {
+			wp( 'option', 'delete', name );
+		} catch ( error ) {
+			// Not set.
+		}
 	}
+	wpEval( 'AryanX\\ActivityLogWithUndo\\Plugin::instance()->store()->truncate();' );
+	wp( 'transient', 'delete', '--all' );
 };
+const sql = ( query ) => wpEval( `global $wpdb; echo wp_json_encode( $wpdb->get_results( ${ JSON.stringify( query ) }, ARRAY_N ) );` );
+const count = ( where ) => Number( JSON.parse( sql( `SELECT COUNT(*) FROM wp_activity_log_with_undo WHERE ${ where }` ) )[ 0 ][ 0 ] );
+// Writes an entry the way version 1 did, straight into the table.
+const legacyEntry = ( fields ) =>
+	wpEval( `
+		global $wpdb;
+		$wpdb->insert( $wpdb->prefix . 'activity_log_with_undo', array_merge( array( 'created_gmt' => gmdate( 'Y-m-d H:i:s' ), 'recorder' => 'options', 'event' => 'option_updated', 'object_type' => 'option', 'actor_user_id' => 1, 'actor_via' => 'admin', 'undoable' => 1 ), json_decode( ${ JSON.stringify( JSON.stringify( fields ) ) }, true ) ) );
+		wp_cache_set_last_changed( 'activity_log_with_undo' );
+		echo $wpdb->insert_id;
+	` );
 
 // Every entry, newest first, straight from the database through WP-CLI.
 const entries = () => JSON.parse( wp( 'activity-log-with-undo', 'list', '--format=json', '--fields=id,event,object_id,object_label,user,via,undoable,undone_by,undo_of,change_set,description' ) );
@@ -29,6 +46,8 @@ test.describe( 'Activity Log with Undo', () => {
 	test.beforeAll( () => {
 		// A small plugin to switch on and off.
 		wpEval( `file_put_contents( WP_PLUGIN_DIR . '/${ HELPER }', "<?php\\n/**\\n * Plugin Name: ALU E2E Helper\\n */\\n" );` );
+		// Test-only hooks: an always-logged option, a visitor's page view, a write refused like a freeze.
+		wpEval( `wp_mkdir_p( WPMU_PLUGIN_DIR ); copy( WP_PLUGIN_DIR . '/activity-log-with-undo/tests/e2e/fixtures/${ FIXTURE }', WPMU_PLUGIN_DIR . '/${ FIXTURE }' );` );
 	} );
 
 	test.beforeEach( async ( { page } ) => {
@@ -40,7 +59,7 @@ test.describe( 'Activity Log with Undo', () => {
 
 	test.afterAll( () => {
 		reset();
-		wpEval( `@unlink( WP_PLUGIN_DIR . '/${ HELPER }' );` );
+		wpEval( `@unlink( WP_PLUGIN_DIR . '/${ HELPER }' ); @unlink( WPMU_PLUGIN_DIR . '/${ FIXTURE }' );` );
 	} );
 
 	test( 'a settings change shows up in the log, and Undo puts the old title back', async ( { page } ) => {
@@ -221,9 +240,19 @@ test.describe( 'Activity Log with Undo', () => {
 		expect( set ).toHaveLength( 3 );
 		expect( new Set( set.map( ( entry ) => entry.change_set ) ).size ).toBe( 1 );
 
+		const messages = [];
+		page.removeAllListeners( 'dialog' );
+		page.on( 'dialog', ( dialog ) => {
+			messages.push( dialog.message() );
+			dialog.accept();
+		} );
 		await page.goto( PAGE );
 		await expect( page.locator( 'tr', { has: page.locator( `#alu-entry-${ set[ 0 ].id }` ) } ) ).toContainText( 'Saved with 2 other changes' );
 		await undoOnScreen( page, set[ 1 ].id, /Undid 3 changes/ );
+		// The question names what else the undo reverses.
+		expect( messages[ 0 ] ).toContain( 'Undo this change? It also undoes 2 other changes saved with it:' );
+		expect( messages[ 0 ] ).toContain( 'Changed Site title' );
+		expect( messages[ 0 ] ).toContain( 'Changed Blog pages show at most' );
 
 		expect( option( 'blogname' ) ).toBe( 'E2E' );
 		expect( option( 'posts_per_page' ) ).toBe( '10' );
@@ -405,6 +434,219 @@ test.describe( 'Activity Log with Undo', () => {
 
 		expect( privacy( 'eraser' ) ).toMatchObject( { items_removed: true, items_retained: true, done: true } );
 		expect( entries()[ 0 ] ).toMatchObject( { user: '(removed)', description: 'Changed Site title' } );
+	} );
+
+	test( 'only settings are logged: other plugins\' internal options and settings a visitor changes are left out', async () => {
+		// Another plugin rewriting its index on every scanned post, the way Block Doctor did.
+		wpEval( 'for ( $i = 0; $i < 200; $i++ ) { update_option( "alu_e2e_index", array( "posts" => array_fill( 0, 2000, "core/paragraph" ), "n" => $i ), false ); }' );
+		wp( 'option', 'update', 'alu_e2e_internal', 'cli' );
+		expect( entries() ).toHaveLength( 0 );
+		expect( count( '1=1' ) ).toBe( 0 );
+
+		// A visitor's page view: the setting it changes is not logged, the always-logged option is.
+		const visitor = await playwrightRequest.newContext( { baseURL: BASE_URL } );
+		expect( await ( await visitor.get( '/?alu_e2e_visit=1' ) ).text() ).toBe( 'ok' );
+		await visitor.dispose();
+		expect( option( 'blogdescription' ) ).toBe( 'Changed by a visitor' );
+		expect( entries().map( ( entry ) => entry.object_id ) ).toEqual( [ 'alu_e2e_always' ] );
+
+		// A setting registered with the Settings API counts, with its label.
+		wpEval( 'register_setting( "general", "alu_e2e_registered", array( "label" => "E2E newsletter" ) ); update_option( "alu_e2e_registered", "weekly" );' );
+		expect( latest( 'option_added' ) ).toMatchObject( { object_id: 'alu_e2e_registered', description: 'Added E2E newsletter' } );
+		wp( 'option', 'update', 'blogdescription', 'Just another site' );
+	} );
+
+	test( 'one option written many times is rate-limited, and a value over the size guard is logged without it', async ( { page } ) => {
+		wp( 'option', 'update', 'alu_e2e_rate', '2' );
+		for ( const name of [ 'One', 'Two', 'Three' ] ) {
+			wp( 'option', 'update', 'blogname', name );
+		}
+		expect( entries().filter( ( entry ) => entry.object_id === 'blogname' ) ).toHaveLength( 2 );
+		// Several writes in one request are one entry.
+		wpEval( 'update_option( "blogdescription", "A" ); update_option( "blogdescription", "B" ); update_option( "blogdescription", "C" );' );
+		const tagline = entries().filter( ( entry ) => entry.object_id === 'blogdescription' );
+		expect( tagline ).toHaveLength( 1 );
+		const shown = JSON.parse( wp( 'activity-log-with-undo', 'show', String( tagline[ 0 ].id ), '--format=json' ) )[ 0 ];
+		expect( [ shown.before, shown.after ] ).toEqual( [ 'Just another site', 'C' ] );
+
+		wpEval( 'update_option( "alu_e2e_always", str_repeat( "x", 70000 ) );' );
+		const big = latest( 'option_added' );
+		expect( big ).toMatchObject( { object_id: 'alu_e2e_always', undoable: false } );
+		await page.goto( `${ PAGE }&entry=${ big.id }` );
+		await expect( page.locator( '.alu-left-out' ) ).toContainText( 'too big to keep' );
+		wp( 'option', 'update', 'blogname', 'E2E' );
+		wp( 'option', 'update', 'blogdescription', 'Just another site' );
+	} );
+
+	test( 'after the upgrade, the notice offers to delete what version 1 logged of internal options', async ( { page } ) => {
+		for ( let i = 0; i < 30; i++ ) {
+			legacyEntry( { object_id: 'block_doctor_index', object_label: 'block_doctor_index', change_set: `legacy${ i }`, before_state: '{"v":1}', after_state: '{"v":2}' } );
+		}
+		legacyEntry( { object_id: 'blogname', object_label: 'Site title', change_set: 'legacy-setting', before_state: '{"v":"A"}', after_state: '{"v":"B"}' } );
+		// The table as version 1 had it.
+		wp( 'option', 'update', 'activity_log_with_undo_db_version', '1' );
+
+		await page.goto( '/wp-admin/index.php' );
+		const notice = page.locator( '.alu-cleanup' );
+		await expect( notice ).toContainText( '30 entries of options that are not settings (block_doctor_index)' );
+		expect( option( 'activity_log_with_undo_db_version' ) ).toBe( '2' );
+		expect( JSON.parse( sql( "SHOW COLUMNS FROM wp_activity_log_with_undo LIKE 'approved_by'" ) ) ).toHaveLength( 1 );
+
+		await notice.getByRole( 'button', { name: 'Delete these entries' } ).click();
+		await expect( page.locator( '.alu-notice' ) ).toContainText( 'Deleted 30 old entries of internal options.' );
+		await expect( page.locator( '.alu-cleanup' ) ).toHaveCount( 0 );
+		expect( count( "object_id = 'block_doctor_index'" ) ).toBe( 0 );
+		expect( count( "object_id = 'blogname'" ) ).toBe( 1 );
+		expect( JSON.parse( wp( 'option', 'get', 'activity_log_with_undo_cleanup', '--format=json' ) ) ).toMatchObject( { status: 'done', deleted: 30 } );
+
+		// The same from WP-CLI, with a dry run first.
+		for ( let i = 0; i < 5; i++ ) {
+			legacyEntry( { object_id: 'alu_e2e_job_state', change_set: `job${ i }`, before_state: '{"v":1}', after_state: '{"v":2}' } );
+		}
+		expect( wp( 'activity-log-with-undo', 'cleanup', '--dry-run' ) ).toContain( '5 entries of 1 options would be deleted.' );
+		expect( count( "object_id = 'alu_e2e_job_state'" ) ).toBe( 5 );
+		expect( wp( 'activity-log-with-undo', 'cleanup', '--yes' ) ).toContain( 'Deleted 5 entries.' );
+		expect( count( "object_id = 'alu_e2e_job_state'" ) ).toBe( 0 );
+	} );
+
+	test( 'an undo leaves out another plugin\'s state logged in the same request, and WP-CLI names what it undoes', async ( { rest } ) => {
+		const termId = wp( 'term', 'create', 'category', 'Soups', '--porcelain' );
+		reset();
+		expect( ( await rest( 'DELETE', `/wp/v2/categories/${ termId }?force=true` ) ).status ).toBe( 200 );
+		const deleted = latest( 'term_deleted' );
+		// What version 1 wrote next to it: a theme's cache-buster, in the same change set.
+		wp( 'option', 'update', 'alu_e2e_content_version', '2' );
+		legacyEntry( { object_id: 'alu_e2e_content_version', object_label: 'alu_e2e_content_version', change_set: deleted.change_set, before_state: '{"v":"1"}', after_state: '{"v":"2"}' } );
+
+		const output = wp( 'activity-log-with-undo', 'undo', String( deleted.id ) );
+		expect( output ).toContain( `Undid #${ deleted.id }.` );
+		expect( output ).not.toContain( 'saved together' );
+		expect( wp( 'term', 'list', 'category', '--name=Soups', '--field=name' ) ).toBe( 'Soups' );
+		expect( option( 'alu_e2e_content_version' ) ).toBe( '2' );
+
+		// Two settings saved together: WP-CLI lists the other one and asks first.
+		wpEval( 'update_option( "blogname", "Together one" ); update_option( "blogdescription", "Together two" );' );
+		const [ tagline, title ] = entries();
+		const asked = wp( 'activity-log-with-undo', 'undo', String( title.id ) );
+		expect( asked ).toContain( `#${ title.id } was saved together with 1 other change(s), which are undone with it:` );
+		expect( asked ).toContain( `#${ tagline.id } Changed Tagline` );
+		expect( option( 'blogname' ) ).toBe( 'Together one' );
+		expect( wp( 'activity-log-with-undo', 'undo', String( title.id ), '--yes' ) ).toContain( 'Undid #' );
+		expect( option( 'blogname' ) ).toBe( 'E2E' );
+		expect( option( 'blogdescription' ) ).toBe( 'Just another site' );
+		wp( 'term', 'delete', 'category', wp( 'term', 'list', 'category', '--name=Soups', '--field=term_id' ) );
+	} );
+
+	test( 'a setting changed before init is logged without loading translations early', async ( { page } ) => {
+		wpEval( '@unlink( WP_CONTENT_DIR . "/debug.log" );' );
+		wp( 'option', 'update', 'alu_e2e_early', '1' );
+		await page.goto( '/wp-admin/index.php' );
+		wp( 'option', 'delete', 'alu_e2e_early' );
+
+		const early = entries().filter( ( entry ) => entry.object_id === 'blogdescription' );
+		expect( early.length ).toBeGreaterThan( 0 );
+		expect( early[ 0 ] ).toMatchObject( { object_label: 'blogdescription', description: 'Changed Tagline' } );
+		expect( wpEval( 'echo file_exists( WP_CONTENT_DIR . "/debug.log" ) ? file_get_contents( WP_CONTENT_DIR . "/debug.log" ) : "";' ) ).not.toContain( 'activity-log-with-undo</code> domain was triggered too early' );
+		wp( 'option', 'update', 'blogdescription', 'Just another site' );
+	} );
+
+	test( 'when another plugin refuses the undo, the reason shows on the same page', async ( { page } ) => {
+		wp( 'option', 'update', 'blogname', 'Frozen' );
+		const entry = latest( 'option_updated' );
+		wp( 'option', 'update', 'alu_e2e_freeze', '1' );
+
+		await page.goto( PAGE );
+		await page.evaluate( () => window.wp.hooks.addAction( 'activityLogWithUndo.undoFailed', 'e2e', ( error, context ) => sessionStorage.setItem( 'alu-failed', `${ error.code } ${ context.entryId }` ) ) );
+		const link = page.locator( `a.alu-undo[data-alu-entry="${ entry.id }"]` );
+		await link.click();
+		await expect( page.locator( '.alu-undo-error' ) ).toContainText( 'This site is frozen for the test. Try again later.' );
+		await expect( page ).toHaveURL( /page=activity-log-with-undo$/ );
+		await expect( link ).not.toHaveAttribute( 'aria-disabled', 'true' );
+		expect( await page.evaluate( () => sessionStorage.getItem( 'alu-failed' ) ) ).toBe( `alu_e2e_frozen ${ entry.id }` );
+		expect( option( 'blogname' ) ).toBe( 'Frozen' );
+		expect( entries().find( ( item ) => item.id === entry.id ).undone_by ).toBeNull();
+
+		// Once writes are allowed again, the same link works.
+		wp( 'option', 'delete', 'alu_e2e_freeze' );
+		await link.click();
+		await expect( page.locator( '.alu-notice' ).first() ).toContainText( 'Undid 1 change' );
+		expect( option( 'blogname' ) ).toBe( 'E2E' );
+	} );
+
+	test( 'the entry screen uses names people know, keeps the raw values under Technical details, and reads well right to left', async ( { page } ) => {
+		const postId = wp( 'post', 'create', '--post_title=Status check', '--post_status=draft', '--post_content=<!-- wp:paragraph --><p>Body</p><!-- /wp:paragraph -->', '--porcelain' );
+		reset();
+		wp( 'post', 'update', postId, '--post_status=publish' );
+		const entry = latest( 'post_status_changed' );
+
+		await page.goto( `${ PAGE }&entry=${ entry.id }` );
+		const facts = page.locator( '.alu-facts' );
+		await expect( facts ).toContainText( 'Status changed' );
+		await expect( facts ).toContainText( 'Post: Status check' );
+		await expect( facts ).not.toContainText( 'post_status_changed' );
+		const table = page.locator( '.alu-diff-table' );
+		await expect( table.locator( 'tbody th' ) ).toHaveText( 'Status' );
+		await expect( table ).toContainText( 'Published' );
+		await expect( table ).toContainText( 'Draft' );
+		await expect( table ).not.toContainText( 'post_status' );
+		await expect( table.locator( 'thead th' ).first() ).toHaveText( 'Field' );
+		await expect( table.locator( 'td' ).first() ).toHaveAttribute( 'dir', 'auto' );
+
+		const details = page.locator( 'details.alu-tech' );
+		await expect( details ).not.toHaveAttribute( 'open', '' );
+		await expect( details.locator( 'code' ).nth( 1 ) ).toBeHidden();
+		await details.locator( 'summary' ).click();
+		await expect( details ).toContainText( 'post_status_changed' );
+		await expect( details ).toContainText( `post ${ postId }` );
+		await expect( details.locator( 'code' ).first() ).toHaveAttribute( 'dir', 'ltr' );
+
+		// Content edits: markup reads left to right.
+		wp( 'post', 'update', postId, '--post_content=<!-- wp:paragraph --><p>Body changed with a much longer sentence so it is shown as a text diff</p><!-- /wp:paragraph -->' );
+		await page.goto( `${ PAGE }&entry=${ latest( 'post_updated' ).id }` );
+		await expect( page.locator( '.alu-text-diff' ).first() ).toHaveAttribute( 'dir', 'ltr' );
+		await expect( page.locator( '.alu-diff-field' ).first() ).toHaveText( 'Content' );
+		wp( 'post', 'delete', postId, '--force' );
+	} );
+
+	test( 'accessibility: links in running text are underlined, muted text has contrast, every row has a checkbox header text', async ( { page } ) => {
+		const userId = wp( 'user', 'create', 'axe', 'axe@example.com', '--porcelain' );
+		reset();
+		wpEval( 'update_option( "blogname", "Axe one" ); update_option( "blogdescription", "Axe two" );' );
+		// Deleting a user is logged only, so its row has no checkbox.
+		wp( 'user', 'delete', userId, '--yes' );
+
+		await page.goto( PAGE );
+		const link = page.locator( '.alu-meta a', { hasText: 'Saved with 1 other change' } ).first();
+		expect( await link.evaluate( ( element ) => getComputedStyle( element ).textDecorationLine ) ).toBe( 'underline' );
+		const loggedOnly = page.locator( '#the-list tr', { hasText: 'Deleted the user axe' } ).first();
+		await expect( loggedOnly.locator( '.check-column .screen-reader-text' ) ).toContainText( 'cannot be selected for undo' );
+		expect( await loggedOnly.locator( '.alu-muted' ).evaluate( ( element ) => getComputedStyle( element ).color ) ).toBe( 'rgb(100, 105, 112)' );
+		wp( 'option', 'update', 'blogname', 'E2E' );
+		wp( 'option', 'update', 'blogdescription', 'Just another site' );
+	} );
+
+	test( 'a change an AI agent made after someone approved it in Agent Governance names the agent and the approver', async ( { page } ) => {
+		// What Agent Governance does when an admin approves a held request: these two actions around the run.
+		wpEval( `
+			wp_set_current_user( 1 );
+			do_action( 'agent_governance_request_approved', array( 'id' => 7, 'agent' => 'Claude', 'identity' => 'app:e2e', 'via' => 'app-password', 'user_id' => 1 ), 1 );
+			update_option( 'blogname', 'Written by an agent' );
+			do_action( 'agent_governance_request_executed', array( 'id' => 7 ), true );
+			update_option( 'blogdescription', 'Written after' );
+		` );
+		const [ after, byAgent ] = entries();
+		const shown = JSON.parse( wp( 'activity-log-with-undo', 'show', String( byAgent.id ), '--format=json' ) )[ 0 ];
+		expect( shown.agent ).toEqual( { name: 'Claude', request: 7, approved_by: 1, approver: 'admin' } );
+		expect( JSON.parse( wp( 'activity-log-with-undo', 'show', String( after.id ), '--format=json' ) )[ 0 ].agent ).toBeNull();
+		expect( JSON.parse( sql( `SELECT agent, agent_request, approved_by FROM wp_activity_log_with_undo WHERE id = ${ byAgent.id }` ) )[ 0 ] ).toEqual( [ 'Claude', '7', '1' ] );
+
+		await page.goto( PAGE );
+		await expect( page.locator( 'tr', { has: page.locator( `#alu-entry-${ byAgent.id }` ) } ).locator( '.alu-agent' ) ).toHaveText( 'Claude, request #7, approved by admin' );
+		await expect( page.locator( 'tr', { has: page.locator( `#alu-entry-${ after.id }` ) } ).locator( '.alu-agent' ) ).toHaveCount( 0 );
+		await page.goto( `${ PAGE }&entry=${ byAgent.id }` );
+		await expect( page.locator( '.alu-facts .alu-agent' ) ).toContainText( 'Claude, request #7, approved by admin' );
+		wp( 'option', 'update', 'blogname', 'E2E' );
+		wp( 'option', 'update', 'blogdescription', 'Just another site' );
 	} );
 
 	test( 'abilities: an agent can list, inspect and undo, and undo refuses a conflict unless forced', async ( { rest } ) => {

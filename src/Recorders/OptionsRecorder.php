@@ -13,11 +13,16 @@ use AryanX\ActivityLogWithUndo\Payload;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Logs added, changed and deleted options, and network options on multisite.
+ * Logs settings people change on purpose: the core settings screens, options
+ * registered with the Settings API, widgets and theme mods, plus anything on
+ * the always-logged list.
  *
- * Caches, transients, cron, locks and other values WordPress rewrites on its
- * own are left out, as are options another recorder covers (active plugins,
- * the theme). Widgets are options too, so they are covered here.
+ * Other plugins keep working state in options and rewrite it all the time
+ * (caches, indexes, counters). Those are not settings, so they are left out.
+ * Settings are only logged when a person started the request (wp-admin, the
+ * REST API, WP-CLI); a cron job changing one is not logged unless the option
+ * is on the always-logged list. Repeated writes of one option in a request
+ * become one entry, and each option is rate-limited across requests.
  */
 final class OptionsRecorder extends BaseRecorder {
 
@@ -29,11 +34,19 @@ final class OptionsRecorder extends BaseRecorder {
 	private array $deleting = array();
 
 	/**
-	 * Patterns of logged options, cached for the request.
+	 * Compiled patterns, cached for the request, keyed by list name.
 	 *
-	 * @var array{0: string[], 1: string[]}|null
+	 * @var array<string, array{0: array<string, bool>, 1: string[]}>
 	 */
-	private ?array $patterns = null;
+	private array $compiled = array();
+
+	/**
+	 * Entries written in this request, keyed by change set, then by option, so
+	 * writing the same option again in the request updates that entry.
+	 *
+	 * @var array<string, array<string, int>>
+	 */
+	private array $open = array();
 
 	/**
 	 * Recorder ID.
@@ -60,12 +73,12 @@ final class OptionsRecorder extends BaseRecorder {
 	 */
 	public function events(): array {
 		return array(
-			'option_added'           => __( 'Option added', 'activity-log-with-undo' ),
+			'option_added'           => __( 'Setting added', 'activity-log-with-undo' ),
 			'option_updated'         => __( 'Setting changed', 'activity-log-with-undo' ),
-			'option_deleted'         => __( 'Option deleted', 'activity-log-with-undo' ),
-			'network_option_added'   => __( 'Network option added', 'activity-log-with-undo' ),
+			'option_deleted'         => __( 'Setting deleted', 'activity-log-with-undo' ),
+			'network_option_added'   => __( 'Network setting added', 'activity-log-with-undo' ),
 			'network_option_updated' => __( 'Network setting changed', 'activity-log-with-undo' ),
-			'network_option_deleted' => __( 'Network option deleted', 'activity-log-with-undo' ),
+			'network_option_deleted' => __( 'Network setting deleted', 'activity-log-with-undo' ),
 		);
 	}
 
@@ -86,7 +99,7 @@ final class OptionsRecorder extends BaseRecorder {
 	}
 
 	/**
-	 * Options left out by default. `*` matches anything.
+	 * Options left out by default, even when they look like settings. `*` matches anything.
 	 *
 	 * @return string[]
 	 */
@@ -149,41 +162,306 @@ final class OptionsRecorder extends BaseRecorder {
 	}
 
 	/**
-	 * Whether changes to an option are logged.
+	 * Settings people change on purpose: what the core settings screens save
+	 * (the options.php allowlist, permalinks, privacy), widgets, theme mods
+	 * and menu settings. `*` matches anything.
 	 *
-	 * @param string $option Option name.
-	 * @return bool
+	 * Options registered with register_setting() count too, without being listed here.
+	 *
+	 * @param bool $network Network settings (Network Admin > Settings) instead.
+	 * @return string[]
 	 */
-	public function is_logged( string $option ): bool {
-		if ( null === $this->patterns ) {
-			/**
-			 * Filters which options are logged. Each item is a name, `*` matches anything.
-			 *
-			 * An option is logged when it matches this list and not the ignore list.
-			 *
-			 * @param string[] $patterns Default `*`, every option.
-			 */
-			$logged = array_filter( array_map( 'strval', (array) apply_filters( 'activity_log_with_undo_logged_options', array( '*' ) ) ) );
+	public static function default_settings( bool $network = false ): array {
+		if ( $network ) {
+			return array(
+				'site_name',
+				'admin_email',
+				'registration',
+				'registrationnotification',
+				'add_new_users',
+				'menu_items',
+				'upload_space_check_disabled',
+				'blog_upload_space',
+				'upload_filetypes',
+				'fileupload_maxk',
+				'first_post',
+				'first_page',
+				'first_comment',
+				'first_comment_url',
+				'first_comment_author',
+				'first_comment_email',
+				'welcome_email',
+				'welcome_user_email',
+				'illegal_names',
+				'limited_email_domains',
+				'banned_email_domains',
+				'WPLANG',
+			);
+		}
 
+		return array(
+			// Settings > General.
+			'blogname',
+			'blogdescription',
+			'site_icon',
+			'siteurl',
+			'home',
+			'admin_email',
+			'users_can_register',
+			'default_role',
+			'WPLANG',
+			'timezone_string',
+			'gmt_offset',
+			'date_format',
+			'time_format',
+			'start_of_week',
+			// Settings > Writing.
+			'default_category',
+			'default_email_category',
+			'default_link_category',
+			'default_post_format',
+			'mailserver_url',
+			'mailserver_port',
+			'mailserver_login',
+			'mailserver_pass',
+			'ping_sites',
+			'use_smilies',
+			'use_balanceTags',
+			// Settings > Reading.
+			'posts_per_page',
+			'posts_per_rss',
+			'rss_use_excerpt',
+			'show_on_front',
+			'page_on_front',
+			'page_for_posts',
+			'blog_public',
+			'blog_charset',
+			// Settings > Discussion.
+			'default_pingback_flag',
+			'default_ping_status',
+			'default_comment_status',
+			'comments_notify',
+			'moderation_notify',
+			'comment_moderation',
+			'require_name_email',
+			'comment_previously_approved',
+			'comment_max_links',
+			'moderation_keys',
+			'disallowed_keys',
+			'show_avatars',
+			'avatar_rating',
+			'avatar_default',
+			'close_comments_for_old_posts',
+			'close_comments_days_old',
+			'thread_comments',
+			'thread_comments_depth',
+			'page_comments',
+			'comments_per_page',
+			'default_comments_page',
+			'comment_order',
+			'comment_registration',
+			'show_comments_cookies_opt_in',
+			'wp_notes_notify',
+			// Settings > Media.
+			'thumbnail_size_w',
+			'thumbnail_size_h',
+			'thumbnail_crop',
+			'medium_size_w',
+			'medium_size_h',
+			'large_size_w',
+			'large_size_h',
+			'image_default_size',
+			'image_default_align',
+			'image_default_link_type',
+			'uploads_use_yearmonth_folders',
+			'upload_path',
+			'upload_url_path',
+			// Settings > Permalinks and Settings > Privacy.
+			'permalink_structure',
+			'category_base',
+			'tag_base',
+			'wp_page_for_privacy_policy',
+			// Appearance: site logo, widgets, Customizer settings, menu settings. Sticky posts.
+			'site_logo',
+			'sidebars_widgets',
+			'widget_*',
+			'theme_mods_*',
+			'nav_menu_options',
+			'sticky_posts',
+		);
+	}
+
+	/**
+	 * Patterns of one list, compiled once per request.
+	 *
+	 * @param string $which ignored, always or settings / network_settings.
+	 * @return array{0: array<string, bool>, 1: string[]} Exact names, and regular expressions for the rest.
+	 */
+	private function patterns( string $which ): array {
+		if ( isset( $this->compiled[ $which ] ) ) {
+			return $this->compiled[ $which ];
+		}
+
+		if ( 'ignored' === $which ) {
 			/**
 			 * Filters which options are never logged. Each item is a name, `*` matches anything.
 			 *
 			 * The default covers transients, caches, cron, locks, salts, and options
-			 * other recorders handle (active plugins, the theme).
+			 * other recorders handle (active plugins, the theme). The ignore list
+			 * wins over every other list.
 			 *
 			 * @param string[] $patterns Option names and patterns.
 			 */
-			$ignored = array_filter( array_map( 'strval', (array) apply_filters( 'activity_log_with_undo_ignored_options', self::default_ignored() ) ) );
+			$patterns = (array) apply_filters( 'activity_log_with_undo_ignored_options', self::default_ignored() );
 
 			// Our own options are never logged, whatever the filters say, or saving the settings would log itself.
-			$ignored[] = 'activity_log_with_undo_*';
+			$patterns[] = 'activity_log_with_undo_*';
+		} elseif ( 'always' === $which ) {
+			/**
+			 * Filters the options that are always logged, on top of the settings.
+			 *
+			 * These are logged in every request, even a cron job or a visitor's
+			 * page view, so only add options that change rarely and that a
+			 * person cares about. Each item is a name, `*` matches anything.
+			 *
+			 * @param string[] $patterns Default none.
+			 */
+			$patterns = (array) apply_filters( 'activity_log_with_undo_logged_options', array() );
+		} else {
+			$network = 'network_settings' === $which;
 
-			$this->patterns = array( $logged, $ignored );
+			/**
+			 * Filters which options count as settings people change on purpose.
+			 *
+			 * Settings are logged when a person changes them in wp-admin, through
+			 * the REST API or with WP-CLI. Options registered with
+			 * register_setting() count as settings without being listed. Each item
+			 * is a name, `*` matches anything.
+			 *
+			 * @param string[] $patterns Default: the core settings screens, widgets, theme mods and menu settings.
+			 * @param bool     $network  Whether these are network settings (multisite).
+			 */
+			$patterns = (array) apply_filters( 'activity_log_with_undo_setting_options', self::default_settings( $network ), $network );
 		}
 
-		list( $logged, $ignored ) = $this->patterns;
+		$exact   = array();
+		$regexes = array();
+		foreach ( array_filter( $patterns, 'is_scalar' ) as $pattern ) {
+			$pattern = trim( (string) $pattern );
+			if ( '' === $pattern ) {
+				continue;
+			}
+			if ( false === strpos( $pattern, '*' ) ) {
+				$exact[ $pattern ] = true;
+			} else {
+				$regexes[] = '/^' . str_replace( '\*', '.*', preg_quote( $pattern, '/' ) ) . '$/';
+			}
+		}
 
-		return self::matches_any( $option, $logged ) && ! self::matches_any( $option, $ignored );
+		$this->compiled[ $which ] = array( $exact, $regexes );
+
+		return $this->compiled[ $which ];
+	}
+
+	/**
+	 * Whether a name is on one of the lists.
+	 *
+	 * @param string $name Option name.
+	 * @param string $which ignored, always, settings or network_settings.
+	 * @return bool
+	 */
+	private function on( string $name, string $which ): bool {
+		list( $exact, $regexes ) = $this->patterns( $which );
+		if ( isset( $exact[ $name ] ) ) {
+			return true;
+		}
+		foreach ( $regexes as $regex ) {
+			if ( preg_match( $regex, $name ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Whether an option is a setting people change on purpose.
+	 *
+	 * @param string $option  Option name.
+	 * @param bool   $network A network option.
+	 * @return bool
+	 */
+	public function is_setting( string $option, bool $network = false ): bool {
+		if ( $this->on( $option, $network ? 'network_settings' : 'settings' ) ) {
+			return true;
+		}
+		if ( $network || ! function_exists( 'get_registered_settings' ) ) {
+			return false;
+		}
+
+		return array_key_exists( $option, (array) get_registered_settings() );
+	}
+
+	/**
+	 * Whether changes to an option are logged at all: a setting, or on the
+	 * always-logged list, and not ignored. Whatever the request.
+	 *
+	 * @param string $option  Option name.
+	 * @param bool   $network A network option.
+	 * @return bool
+	 */
+	public function is_tracked( string $option, bool $network = false ): bool {
+		if ( $this->on( $option, 'ignored' ) ) {
+			return false;
+		}
+
+		return $this->on( $option, 'always' ) || $this->is_setting( $option, $network );
+	}
+
+	/**
+	 * Whether a change to an option is logged in this request.
+	 *
+	 * Always-logged options are; settings only when a person started the request.
+	 *
+	 * @param string $option  Option name.
+	 * @param bool   $network A network option.
+	 * @return bool
+	 */
+	public function is_logged( string $option, bool $network = false ): bool {
+		if ( $this->on( $option, 'ignored' ) ) {
+			return false;
+		}
+		if ( $this->on( $option, 'always' ) ) {
+			return true;
+		}
+		if ( ! $this->is_setting( $option, $network ) ) {
+			return false;
+		}
+		if ( $this->logger->context()->user_initiated() ) {
+			return true;
+		}
+
+		self::skipped( $option, 'background' );
+
+		return false;
+	}
+
+	/**
+	 * Whether an entry of this recorder is undone with the rest of its change set.
+	 *
+	 * Entries of options that are not logged any more (other plugins' state,
+	 * logged before version 2) are left out, so undoing a person's change never
+	 * writes back another plugin's cache.
+	 *
+	 * @param Entry $entry Entry.
+	 * @return bool
+	 */
+	public function in_change_set( Entry $entry ): bool {
+		if ( ! in_array( $entry->object_type, array( 'option', 'network_option' ), true ) ) {
+			return true;
+		}
+
+		return $this->is_tracked( $entry->object_id, 'network_option' === $entry->object_type );
 	}
 
 	/**
@@ -204,6 +482,131 @@ final class OptionsRecorder extends BaseRecorder {
 	}
 
 	/**
+	 * Largest before or after value kept for an option, in bytes.
+	 *
+	 * @param string $option Option name.
+	 * @return int 0 for the usual payload limit only.
+	 */
+	public static function size_limit( string $option ): int {
+		/**
+		 * Filters the largest value of an option kept with its entry, in bytes.
+		 *
+		 * Settings are small. A bigger value is another plugin's data, so the
+		 * change is logged without its values and cannot be undone. The payload
+		 * limit from the settings still applies when it is lower. 0 leaves only
+		 * the payload limit.
+		 *
+		 * @param int    $bytes  Default 65536 (64 KB).
+		 * @param string $option Option name.
+		 */
+		return max( 0, (int) apply_filters( 'activity_log_with_undo_option_size_limit', 64 * KB_IN_BYTES, $option ) );
+	}
+
+	/**
+	 * Whether an option was logged too often lately, counting this change if not.
+	 *
+	 * @param string $option  Option name.
+	 * @param bool   $network A network option.
+	 * @return bool
+	 */
+	public static function rate_limited( string $option, bool $network = false ): bool {
+		/**
+		 * Filters how many entries one option may get within the rate window.
+		 *
+		 * A person does not change one setting dozens of times a minute; code
+		 * does. Past the limit, changes are not logged until the window ends.
+		 * 0 turns the limit off.
+		 *
+		 * @param int    $limit  Default 20.
+		 * @param string $option Option name.
+		 */
+		$limit = max( 0, (int) apply_filters( 'activity_log_with_undo_option_rate_limit', 20, $option ) );
+		if ( 0 === $limit ) {
+			return false;
+		}
+
+		/**
+		 * Filters the window of the per-option rate limit, in seconds.
+		 *
+		 * @param int    $seconds Default 60.
+		 * @param string $option  Option name.
+		 */
+		$window = max( 1, (int) apply_filters( 'activity_log_with_undo_option_rate_window', MINUTE_IN_SECONDS, $option ) );
+
+		$key = 'activity_log_with_undo_rate_' . md5( ( $network ? 'network:' : '' ) . $option );
+		$now = time();
+		$hit = get_transient( $key );
+		if ( ! is_array( $hit ) || ! isset( $hit[0], $hit[1] ) || (int) $hit[0] + $window <= $now || (int) $hit[0] > $now ) {
+			$hit = array( $now, 0 );
+		}
+		if ( (int) $hit[1] >= $limit ) {
+			return true;
+		}
+		set_transient( $key, array( (int) $hit[0], (int) $hit[1] + 1 ), max( 1, (int) $hit[0] + $window - $now ) );
+
+		return false;
+	}
+
+	/**
+	 * Announces a settings change that was left out of the log.
+	 *
+	 * @param string $option Option name.
+	 * @param string $reason background (no person started the request) or rate_limited.
+	 */
+	private static function skipped( string $option, string $reason ): void {
+		/**
+		 * Fires when a change to a setting is not logged.
+		 *
+		 * @param string $option Option name.
+		 * @param string $reason background: changed in a request no person started (cron, a
+		 *                       visitor); rate_limited: changed too often lately.
+		 */
+		do_action( 'activity_log_with_undo_option_skipped', $option, $reason );
+	}
+
+	/**
+	 * Logs a change to an option, or folds it into the entry this request already wrote for it.
+	 *
+	 * @param string $event   Event.
+	 * @param string $option  Option name.
+	 * @param mixed  $before  Old value.
+	 * @param mixed  $after   New value.
+	 * @param bool   $network A network option.
+	 */
+	private function write( string $event, string $option, $before, $after, bool $network = false ): void {
+		$type   = $network ? 'network_option' : 'option';
+		$key    = $type . '|' . $option;
+		$set    = $this->logger->current_change_set();
+		$merge  = ! $this->logger->undoing() && false !== strpos( $event, '_updated' );
+		$limit  = self::size_limit( $option );
+		$latest = $this->open[ $set ][ $key ] ?? 0;
+
+		if ( $merge && $latest ) {
+			$this->logger->update_after( $latest, $after, $limit );
+			return;
+		}
+
+		if ( self::rate_limited( $option, $network ) ) {
+			self::skipped( $option, 'rate_limited' );
+			return;
+		}
+
+		// Translations load at init; a setting changed earlier keeps its name and gets its label when shown.
+		$label    = did_action( 'init' ) ? self::label_for( $option ) : $option;
+		$undoable = ! ( false !== strpos( $event, '_deleted' ) && ( null === $before || false === $before ) );
+		if ( 'network_option_deleted' === $event ) {
+			$undoable = false;
+		}
+
+		$id = $this->record( $event, $type, $option, $label, $before, $after, $undoable, $network, $limit );
+		if ( $id && ! $this->logger->undoing() && false === strpos( $event, '_deleted' ) ) {
+			$this->open[ $this->logger->current_change_set() ][ $key ] = $id;
+		} else {
+			unset( $this->open[ $set ][ $key ] );
+		}
+	}
+
+	/**
 	 * An option was added.
 	 *
 	 * @param string $option Name.
@@ -211,8 +614,8 @@ final class OptionsRecorder extends BaseRecorder {
 	 */
 	public function added( $option, $value ): void {
 		// WordPress adds some options empty the first time a screen is saved (WPLANG on Settings > General). Nothing changes.
-		if ( $this->is_logged( (string) $option ) && ! in_array( $value, array( '', null, false, array() ), true ) ) {
-			$this->record( 'option_added', 'option', $option, self::label_for( (string) $option ), null, $value, true );
+		if ( ! in_array( $value, array( '', null, false, array() ), true ) && $this->is_logged( (string) $option ) ) {
+			$this->write( 'option_added', (string) $option, null, $value );
 		}
 	}
 
@@ -225,7 +628,7 @@ final class OptionsRecorder extends BaseRecorder {
 	 */
 	public function updated( $option, $old_value, $value ): void {
 		if ( $this->is_logged( (string) $option ) && ! Payload::same( $old_value, $value ) ) {
-			$this->record( 'option_updated', 'option', $option, self::label_for( (string) $option ), $old_value, $value, true );
+			$this->write( 'option_updated', (string) $option, $old_value, $value );
 		}
 	}
 
@@ -253,7 +656,7 @@ final class OptionsRecorder extends BaseRecorder {
 		$before = $this->deleting[ $option ];
 		unset( $this->deleting[ $option ] );
 
-		$this->record( 'option_deleted', 'option', $option, self::label_for( $option ), $before, null, false !== $before );
+		$this->write( 'option_deleted', $option, $before, null );
 	}
 
 	/**
@@ -263,8 +666,8 @@ final class OptionsRecorder extends BaseRecorder {
 	 * @param mixed  $value  Value.
 	 */
 	public function network_added( $option, $value ): void {
-		if ( $this->is_logged( (string) $option ) ) {
-			$this->record( 'network_option_added', 'network_option', $option, (string) $option, null, $value, true, true );
+		if ( $this->is_logged( (string) $option, true ) ) {
+			$this->write( 'network_option_added', (string) $option, null, $value, true );
 		}
 	}
 
@@ -276,8 +679,8 @@ final class OptionsRecorder extends BaseRecorder {
 	 * @param mixed  $old_value Old value.
 	 */
 	public function network_updated( $option, $value, $old_value ): void {
-		if ( $this->is_logged( (string) $option ) && ! Payload::same( $old_value, $value ) ) {
-			$this->record( 'network_option_updated', 'network_option', $option, (string) $option, $old_value, $value, true, true );
+		if ( $this->is_logged( (string) $option, true ) && ! Payload::same( $old_value, $value ) ) {
+			$this->write( 'network_option_updated', (string) $option, $old_value, $value, true );
 		}
 	}
 
@@ -287,8 +690,8 @@ final class OptionsRecorder extends BaseRecorder {
 	 * @param string $option Name.
 	 */
 	public function network_deleted( $option ): void {
-		if ( $this->is_logged( (string) $option ) ) {
-			$this->record( 'network_option_deleted', 'network_option', $option, (string) $option, null, null, false, true );
+		if ( $this->is_logged( (string) $option, true ) ) {
+			$this->write( 'network_option_deleted', (string) $option, null, null, true );
 		}
 	}
 
@@ -369,7 +772,8 @@ final class OptionsRecorder extends BaseRecorder {
 	 * @return string
 	 */
 	public function describe( Entry $entry ): string {
-		$label = '' !== $entry->object_label ? $entry->object_label : $entry->object_id;
+		// Changes logged before translations were loaded keep the option name; name them now.
+		$label = '' !== $entry->object_label && $entry->object_label !== $entry->object_id ? $entry->object_label : self::label_for( $entry->object_id );
 
 		switch ( $entry->event ) {
 			case 'option_added':
@@ -425,6 +829,10 @@ final class OptionsRecorder extends BaseRecorder {
 
 		if ( isset( $known[ $option ] ) ) {
 			return $known[ $option ];
+		}
+		$registered = function_exists( 'get_registered_settings' ) ? (array) get_registered_settings() : array();
+		if ( ! empty( $registered[ $option ]['label'] ) ) {
+			return (string) $registered[ $option ]['label'];
 		}
 		if ( 0 === strpos( $option, 'widget_' ) ) {
 			/* translators: %s: widget type, e.g. "search". */

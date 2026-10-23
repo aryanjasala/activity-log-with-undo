@@ -18,7 +18,7 @@ Activity Log with Undo logs each change together with what it was before, and gi
 
 What it logs, and what Undo does:
 
-* **Settings and widgets**: any option, added, changed or deleted. Undo writes the old value back. Transients, caches, cron and similar noise are left out.
+* **Settings and widgets**: the settings people change on purpose. That is everything on the core Settings screens, permalinks, the privacy page, widgets, Customizer settings, and options plugins register with the Settings API. Undo writes the old value back. Other plugins' caches, indexes and counters are left out, and so are settings changed by a cron job or a visitor's page view.
 * **Plugins**: activation and deactivation, undone by switching back. Installs, updates and deletions are logged only, because WordPress keeps no copy of the old files.
 * **Themes**: a theme switch, undone by switching back while the old theme is still installed.
 * **Users**: role changes, display name, email and website, all undoable. Undoing a new user deletes the account and gives their content to whoever added them, after you confirm. Deleted users are logged only.
@@ -33,6 +33,8 @@ Free and open source under the GPL. No pro version, no upsells, no ads in wp-adm
 
 * **Changed since?** Undo only runs straight away when things still look the way the change left them. If someone changed it again, you see the differences and choose Undo anyway, or leave it.
 * **One save, one undo.** Changes made in the same request are a change set. Saving Settings > Reading changes several options, and one Undo puts them all back.
+* **You see what else goes back.** When a change set holds more than one change, the confirm lists the others first. On WP-CLI too, unless you pass `--yes`.
+* **Only your changes.** Another plugin's state that happened to change in the same request is never part of your undo.
 * **Undo is logged too**, so it can be undone. That is your redo.
 * **Before and after, side by side.** A word diff for text, a table for everything else.
 
@@ -49,11 +51,14 @@ Turn on "Undo last change" in the admin bar to undo your own most recent change 
 `wp activity-log-with-undo undo 42`
 `wp activity-log-with-undo undo 42 --force`
 `wp activity-log-with-undo purge --older-than=30`
+`wp activity-log-with-undo cleanup --dry-run`
 `wp activity-log-with-undo settings --retention-days=30 --ip=off`
 
 = For AI agents =
 
 On WordPress 6.9 and later, three abilities let an agent list the activity, read one change with its before and after state, and undo it. Undo refuses when things changed since, unless the agent passes `force`.
+
+With Agent Governance active, a change an agent made after someone approved its request says which agent it was, the request number, and who approved it.
 
 = Privacy =
 
@@ -75,7 +80,15 @@ Yes, and the source shows as WP-CLI. Every WP-CLI command is its own change set.
 
 = Will it fill up my database? =
 
-Entries older than 90 days are deleted once a day. Change the period on the Settings tab, turn off the kinds of changes you do not need, or run `wp activity-log-with-undo purge`.
+No. It logs settings, not every option another plugin writes, and each option is logged at most 20 times a minute. A setting value over 64 KB is logged without the value. If the log still grows past 512 MB, new changes are logged without their old values and Site Health tells you. Entries older than 90 days are deleted once a day. Change the period on the Settings tab, turn off the kinds of changes you do not need, or run `wp activity-log-with-undo purge`. All of these limits have filters.
+
+= Why is a change to my plugin's option not in the log? =
+
+The log keeps settings people change on purpose. If your plugin saves its settings with the Settings API (`register_setting()`), they are logged. For anything else, add the option name to the `activity_log_with_undo_logged_options` filter.
+
+= I updated from an earlier version and the log is huge. =
+
+Version 1.0.0 logged every option, so other plugins' internal state could fill the table. After the update, administrators see a notice that counts those entries and offers to delete them. `wp activity-log-with-undo cleanup` does the same from the command line.
 
 = I use Category & Tag Trash. Who restores deleted terms? =
 

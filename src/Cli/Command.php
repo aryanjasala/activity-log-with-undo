@@ -8,6 +8,7 @@
 namespace AryanX\ActivityLogWithUndo\Cli;
 
 use AryanX\ActivityLogWithUndo\Abilities;
+use AryanX\ActivityLogWithUndo\Cleanup;
 use AryanX\ActivityLogWithUndo\Recorders\Registry;
 use AryanX\ActivityLogWithUndo\Retention;
 use AryanX\ActivityLogWithUndo\Settings;
@@ -64,6 +65,13 @@ final class Command {
 	private Abilities $abilities;
 
 	/**
+	 * Deletes entries of options that are not logged any more.
+	 *
+	 * @var Cleanup|null
+	 */
+	private ?Cleanup $cleanup;
+
+	/**
 	 * Sets up the command.
 	 *
 	 * @param Store     $store     Entries.
@@ -72,14 +80,16 @@ final class Command {
 	 * @param Retention $retention Deletes old entries.
 	 * @param Settings  $settings  Saved settings.
 	 * @param Abilities $abilities Entry details.
+	 * @param Cleanup   $cleanup   Deletes entries of options that are not logged any more.
 	 */
-	public function __construct( Store $store, Registry $registry, Undoer $undoer, Retention $retention, Settings $settings, Abilities $abilities ) {
+	public function __construct( Store $store, Registry $registry, Undoer $undoer, Retention $retention, Settings $settings, Abilities $abilities, ?Cleanup $cleanup = null ) {
 		$this->store     = $store;
 		$this->registry  = $registry;
 		$this->undoer    = $undoer;
 		$this->retention = $retention;
 		$this->settings  = $settings;
 		$this->abilities = $abilities;
+		$this->cleanup   = $cleanup;
 	}
 
 	/**
@@ -233,7 +243,9 @@ final class Command {
 	/**
 	 * Undoes changes, each with the rest of its change set.
 	 *
-	 * Stops when something changed since the entry was logged, unless --force.
+	 * Lists the other changes saved together with an entry and asks before
+	 * undoing them all. Stops when something changed since the entry was
+	 * logged, unless --force.
 	 *
 	 * ## OPTIONS
 	 *
@@ -244,7 +256,7 @@ final class Command {
 	 * : Undo even when things changed since. That overwrites the later change.
 	 *
 	 * [--yes]
-	 * : Do not ask before deleting a user that an undo would delete.
+	 * : Do not ask before undoing the other changes saved together, or deleting a user that an undo would delete.
 	 *
 	 * ## EXAMPLES
 	 *
@@ -261,6 +273,21 @@ final class Command {
 		foreach ( array_map( 'intval', $args ) as $id ) {
 			$check = $this->undoer->check( $id );
 			if ( ! $check instanceof \WP_Error ) {
+				$others = array_values(
+					array_filter(
+						$check['entries'],
+						static function ( $entry ) use ( $id ) {
+							return $entry->id !== $id;
+						}
+					)
+				);
+				if ( $others ) {
+					\WP_CLI::line( sprintf( '#%d was saved together with %d other change(s), which are undone with it:', $id, count( $others ) ) );
+					foreach ( $others as $other ) {
+						\WP_CLI::line( sprintf( '  #%d %s', $other->id, $this->registry->describe( $other ) ) );
+					}
+					\WP_CLI::confirm( 'Undo all of them?', $assoc_args );
+				}
 				foreach ( $check['entries'] as $entry ) {
 					if ( 'user_created' === $entry->event ) {
 						\WP_CLI::confirm( sprintf( 'Undoing #%d deletes the user %s. Continue?', $id, $entry->object_label ), $assoc_args );
@@ -309,6 +336,70 @@ final class Command {
 		$result = $this->retention->purge( $days, PHP_INT_MAX );
 
 		\WP_CLI::success( sprintf( 'Deleted %d entries older than %s UTC.', $result['deleted'], $result['cutoff'] ) );
+	}
+
+	/**
+	 * Deletes old entries of options that are not settings.
+	 *
+	 * Version 1 logged every option, so other plugins' caches, indexes and
+	 * counters may fill the log. This lists those options with their number of
+	 * entries and deletes the entries, in batches. Settings registered only in
+	 * wp-admin are not known to WP-CLI, so check the list before you confirm.
+	 *
+	 * ## OPTIONS
+	 *
+	 * [--dry-run]
+	 * : List what would be deleted, and stop.
+	 *
+	 * [--yes]
+	 * : Do not ask first.
+	 *
+	 * [--format=<format>]
+	 * : table, csv, json or yaml for the list.
+	 * ---
+	 * default: table
+	 * ---
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     wp activity-log-with-undo cleanup --dry-run
+	 *     wp activity-log-with-undo cleanup --yes
+	 *
+	 * @param array $args       Positional arguments.
+	 * @param array $assoc_args Named arguments.
+	 */
+	public function cleanup( array $args, array $assoc_args ): void {
+		if ( ! $this->cleanup ) {
+			\WP_CLI::error( 'The clean-up is not available.' );
+		}
+
+		$found = $this->cleanup->scan();
+		if ( ! $found ) {
+			Cleanup::finish( 0 );
+			\WP_CLI::success( 'Nothing to clean up: every option in the log is a setting.' );
+			return;
+		}
+
+		$rows = array();
+		foreach ( $found as $name => $count ) {
+			$rows[] = array(
+				'option'  => $name,
+				'entries' => $count,
+			);
+		}
+		\WP_CLI\Utils\format_items( (string) ( $assoc_args['format'] ?? 'table' ), $rows, array( 'option', 'entries' ) );
+
+		$total = array_sum( $found );
+		if ( \WP_CLI\Utils\get_flag_value( $assoc_args, 'dry-run', false ) ) {
+			\WP_CLI::line( sprintf( '%d entries of %d options would be deleted.', $total, count( $found ) ) );
+			return;
+		}
+
+		\WP_CLI::confirm( sprintf( 'Delete %d entries of %d options?', $total, count( $found ) ), $assoc_args );
+		$result = $this->cleanup->purge( array_keys( $found ), PHP_INT_MAX );
+		Cleanup::finish( $result['deleted'] );
+
+		\WP_CLI::success( sprintf( 'Deleted %d entries.', $result['deleted'] ) );
 	}
 
 	/**

@@ -115,6 +115,10 @@ final class Abilities implements Service {
 				'undoable'     => array( 'type' => 'boolean' ),
 				'undone_by'    => array( 'type' => array( 'integer', 'null' ) ),
 				'undo_of'      => array( 'type' => array( 'integer', 'null' ) ),
+				'agent'        => array(
+					'type'        => array( 'object', 'null' ),
+					'description' => 'For a change an AI agent made after a person approved it in Agent Governance: name, request, approved_by and approver.',
+				),
 			),
 		);
 

@@ -81,10 +81,20 @@ final class Logger {
 	}
 
 	/**
+	 * Where changes come from, for recorders that decide what to log by it.
+	 *
+	 * @return Context
+	 */
+	public function context(): Context {
+		return $this->context;
+	}
+
+	/**
 	 * Logs a change.
 	 *
 	 * @param array $data event, recorder, object_type, object_id, object_label, before, after,
-	 *                    undoable, and network (log on the main site).
+	 *                    undoable, network (log on the main site), and limit (a lower size
+	 *                    limit in bytes for this entry's states, 0 for the usual one).
 	 * @return int Entry ID, or 0 when nothing was logged.
 	 */
 	public function log( array $data ): int {
@@ -100,6 +110,7 @@ final class Logger {
 				'after'        => null,
 				'undoable'     => false,
 				'network'      => false,
+				'limit'        => 0,
 			)
 		);
 
@@ -114,17 +125,19 @@ final class Logger {
 			return 0;
 		}
 
-		$limit    = $this->settings->payload_limit();
+		$limit    = $this->limit( (int) $data['limit'] );
+		$full     = $this->log_full();
 		$undoable = (bool) $data['undoable'];
 		$states   = array();
 		foreach ( array( 'before', 'after' ) as $which ) {
 			$encoded = Payload::encode( $data[ $which ] );
-			if ( null !== $encoded && strlen( $encoded ) > $limit ) {
-				$encoded  = Payload::over_limit( strlen( $encoded ) );
+			if ( null !== $encoded && ( $full || strlen( $encoded ) > $limit ) ) {
+				$encoded  = Payload::over_limit( strlen( $encoded ), $full ? Payload::LOG_FULL : Payload::TOO_BIG );
 				$undoable = false;
 			}
 			$states[ $which ] = $encoded;
 		}
+		$agent = $this->context->agent();
 
 		$row = array(
 			'created_gmt'   => current_time( 'mysql', true ),
@@ -141,6 +154,9 @@ final class Logger {
 			'after_state'   => $states['after'],
 			'undoable'      => $undoable ? 1 : 0,
 			'undo_of'       => $this->undo_of,
+			'agent'         => $agent ? $agent['agent'] : '',
+			'agent_request' => $agent ? $agent['request'] : 0,
+			'approved_by'   => $agent ? $agent['approved_by'] : 0,
 		);
 
 		$switched = $data['network'] && is_multisite() && ! is_main_site();
@@ -174,21 +190,73 @@ final class Logger {
 	/**
 	 * Replaces the after state of an entry written earlier in this request.
 	 *
-	 * Used when one change fires several hooks, such as a role change.
+	 * Used when one change fires several hooks, such as a role change, or
+	 * writes the same option again.
 	 *
 	 * @param int   $id    Entry ID.
 	 * @param mixed $after New after state.
+	 * @param int   $limit A lower size limit in bytes for this entry, or 0 for the usual one.
 	 */
-	public function update_after( int $id, $after ): void {
+	public function update_after( int $id, $after, int $limit = 0 ): void {
 		$encoded = Payload::encode( $after );
 		$fields  = array( 'after_state' => $encoded );
-		if ( null !== $encoded && strlen( $encoded ) > $this->settings->payload_limit() ) {
+		if ( null !== $encoded && strlen( $encoded ) > $this->limit( $limit ) ) {
 			$fields = array(
 				'after_state' => Payload::over_limit( strlen( $encoded ) ),
 				'undoable'    => 0,
 			);
 		}
 		$this->store->update( $id, $fields );
+	}
+
+	/**
+	 * Largest state stored with an entry, in bytes.
+	 *
+	 * @param int $lower A lower limit for this entry, or 0.
+	 * @return int
+	 */
+	private function limit( int $lower ): int {
+		$limit = $this->settings->payload_limit();
+
+		return $lower > 0 ? min( $limit, $lower ) : $limit;
+	}
+
+	/**
+	 * Largest the log table may grow, in bytes, before changes are logged without their states.
+	 *
+	 * @return int 0 for no limit.
+	 */
+	public static function max_log_size(): int {
+		/**
+		 * Filters how big the log table may grow, in bytes.
+		 *
+		 * Past it, changes are still logged, but without their before and
+		 * after states, so they cannot be undone. Site Health says so. 0 turns
+		 * the limit off.
+		 *
+		 * @param int $bytes Default 536870912 (512 MB).
+		 */
+		return max( 0, (int) apply_filters( 'activity_log_with_undo_max_log_size', 512 * MB_IN_BYTES ) );
+	}
+
+	/**
+	 * Whether the log table is over its size limit.
+	 *
+	 * @return bool
+	 */
+	public function log_full(): bool {
+		$max = self::max_log_size();
+
+		return $max > 0 && $this->store->size() > $max;
+	}
+
+	/**
+	 * Whether an undo is running, so its changes are logged as reversals.
+	 *
+	 * @return bool
+	 */
+	public function undoing(): bool {
+		return null !== $this->undo_of;
 	}
 
 	/**
