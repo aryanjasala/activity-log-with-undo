@@ -16,8 +16,9 @@ defined( 'ABSPATH' ) || exit;
 /**
  * POST /activity-log-with-undo/v1/entries/<id>/undo with `force`.
  *
- * Answers 409 with the differences when things changed since, and tells the
- * screen where to go next either way.
+ * Answers 409 with the differences when things changed since, and the page
+ * that shows them. Other errors carry only their message, which the screen
+ * shows in place.
  */
 final class UndoController implements Service {
 
@@ -86,11 +87,9 @@ final class UndoController implements Service {
 
 		if ( $result instanceof \WP_Error ) {
 			$data = (array) $result->get_error_data();
+			// A conflict opens the entry with the differences; any other error is shown where the person is.
 			if ( 'activity_log_with_undo_conflict' === $result->get_error_code() ) {
 				$data['redirect'] = LogPage::url( array( 'entry' => $id ) );
-			} else {
-				LogPage::notice_for( $result );
-				$data['redirect'] = LogPage::url();
 			}
 			$data['status'] = (int) ( $data['status'] ?? 400 );
 

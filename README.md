@@ -31,15 +31,15 @@ Activity logs tell you what changed. They do not help you put it back. Activity 
 
 ## Features
 
-- **Settings and widgets**: any option added, changed or deleted, with the old value written back on Undo
+- **Settings and widgets**: the settings people change on purpose, with the old value written back on Undo. Other plugins' caches, indexes and counters stay out of the log
 - **Plugins and themes**: activation, deactivation and theme switches undone; installs, updates and deletions logged with the reason they cannot be
 - **Users**: roles, display name, email and website restored; a new user can be removed, with their content kept
 - **Content**: status changes, trash, edits through the matching revision, slug, parent, author, featured image and template
 - **Terms and menus**: renamed or deleted terms rebuilt with their posts and meta, and whole menus put back as they were
 - **Site Editor**: global styles, templates, template parts and navigation go back to the previous version
 - **Changed since?** Undo stops and shows the differences; **Undo anyway** overwrites the later change
-- **One save, one undo**: changes from one request are a change set, and the undo is logged too, so it can be redone
-- Filters, search, bulk undo, a before/after diff, "Undo last change" in the admin bar, WP-CLI and abilities for AI agents
+- **One save, one undo**: changes from one request are a change set, the confirm names every change it puts back, and the undo is logged too, so it can be redone
+- Filters, search, bulk undo, a before/after diff with names people know, "Undo last change" in the admin bar, WP-CLI, and abilities for AI agents. With Agent Governance, an approved agent change says which agent and who approved it
 
 ## Install
 
@@ -128,6 +128,12 @@ Small plugins that each fill one gap in WordPress, all free with no pro version:
 | <img src="https://raw.githubusercontent.com/aryanjasala/category-tag-trash/main/.wordpress-org/icon-128x128.png" alt="" width="32"> | [Category & Tag Trash](https://github.com/aryanjasala/category-tag-trash) | A trash for categories, tags and custom terms, with undo and full restore |
 | <img src="https://raw.githubusercontent.com/aryanjasala/site-read-only-mode/main/.wordpress-org/icon-128x128.png" alt="" width="32"> | [Site Read-Only Mode](https://github.com/aryanjasala/site-read-only-mode) | Read-only mode for WordPress during migrations and deploys |
 | <img src="https://raw.githubusercontent.com/aryanjasala/restore-blocks-from-revisions/main/.wordpress-org/icon-128x128.png" alt="" width="32"> | [Restore Blocks from Revisions](https://github.com/aryanjasala/restore-blocks-from-revisions) | Restore a single block from an old revision, not the whole post |
+| <img src="https://raw.githubusercontent.com/aryanjasala/agent-governance/main/.wordpress-org/icon-128x128.png" alt="" width="32"> | [Agent Governance](https://github.com/aryanjasala/agent-governance) | Hold risky AI agent calls for approval, preview what they change, and roll back a session |
+| <img src="https://raw.githubusercontent.com/aryanjasala/block-doctor/main/.wordpress-org/icon-128x128.png" alt="" width="32"> | [Block Doctor](https://github.com/aryanjasala/block-doctor) | Scan the whole site for invalid and broken blocks and fix them in bulk, with undo |
+| <img src="https://raw.githubusercontent.com/aryanjasala/block-theme-ops/main/.wordpress-org/icon-128x128.png" alt="" width="32"> | [Block Theme Ops](https://github.com/aryanjasala/block-theme-ops) | Find Site Editor changes that override your theme files, see the diff, reset them or send them to Git |
+| <img src="https://raw.githubusercontent.com/aryanjasala/role-right-sizer/main/.wordpress-org/icon-128x128.png" alt="" width="32"> | [Role Right-Sizer](https://github.com/aryanjasala/role-right-sizer) | Recommends the smallest role each user needs, from what they actually do |
+| <img src="https://raw.githubusercontent.com/aryanjasala/update-rehearsal/main/.wordpress-org/icon-128x128.png" alt="" width="32"> | [Update Rehearsal](https://github.com/aryanjasala/update-rehearsal) | Try plugin, theme, core and PHP updates on a disposable copy of your site in WordPress Playground first |
+| <img src="https://raw.githubusercontent.com/aryanjasala/user-session-manager/main/.wordpress-org/icon-128x128.png" alt="" width="32"> | [User Session Manager](https://github.com/aryanjasala/user-session-manager) | See every device signed in, sign out one, and limit sessions per role |
 
 ## License
 

@@ -89,6 +89,13 @@ final class Plugin {
 	private Retention $retention;
 
 	/**
+	 * Deletes entries of options that are not logged any more.
+	 *
+	 * @var Cleanup
+	 */
+	private Cleanup $cleanup;
+
+	/**
 	 * Starts the plugin. Runs on `plugins_loaded`.
 	 */
 	public static function boot(): void {
@@ -115,8 +122,9 @@ final class Plugin {
 		$this->store    = new Store();
 		$this->context  = new Context( $this->settings );
 		$this->logger   = new Logger( $this->store, $this->settings, $this->context );
+		$options        = new OptionsRecorder( $this->logger );
 		$recorders      = array(
-			new OptionsRecorder( $this->logger ),
+			$options,
 			new PluginsRecorder( $this->logger ),
 			new ThemesRecorder( $this->logger ),
 			new UsersRecorder( $this->logger ),
@@ -131,6 +139,15 @@ final class Plugin {
 		$this->registry  = new Registry( $recorders, $this->settings );
 		$this->undoer    = new Undoer( $this->store, $this->logger, $this->registry );
 		$this->retention = new Retention( $this->store, $this->settings );
+		$this->cleanup   = new Cleanup( $this->store, $options );
+	}
+
+	/**
+	 * Deactivation: stops the background jobs.
+	 */
+	public static function deactivate(): void {
+		Retention::unschedule();
+		wp_clear_scheduled_hook( Cleanup::HOOK );
 	}
 
 	/**
@@ -180,12 +197,13 @@ final class Plugin {
 			$this->context,
 			$this->registry,
 			$this->retention,
+			$this->cleanup,
 			new Privacy( $this->store, $this->registry ),
 			new LogPage( $this->store, $this->registry, $this->undoer, $this->settings, $this->retention ),
 			new Notices(),
 			new AdminBar( $this->store, $this->registry, $this->settings ),
 			new UndoController( $this->undoer ),
-			new SiteHealth( $this->settings ),
+			new SiteHealth( $this->settings, $this->store ),
 			$abilities,
 		);
 
@@ -194,7 +212,7 @@ final class Plugin {
 		}
 
 		if ( defined( 'WP_CLI' ) && WP_CLI ) {
-			\WP_CLI::add_command( 'activity-log-with-undo', new Command( $this->store, $this->registry, $this->undoer, $this->retention, $this->settings, $abilities ) );
+			\WP_CLI::add_command( 'activity-log-with-undo', new Command( $this->store, $this->registry, $this->undoer, $this->retention, $this->settings, $abilities, $this->cleanup ) );
 		}
 	}
 }

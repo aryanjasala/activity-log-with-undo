@@ -9,7 +9,9 @@ namespace AryanX\ActivityLogWithUndo\Admin;
 
 use AryanX\ActivityLogWithUndo\Entry;
 use AryanX\ActivityLogWithUndo\Integrations\CategoryTagTrash;
+use AryanX\ActivityLogWithUndo\Logger;
 use AryanX\ActivityLogWithUndo\Payload;
+use AryanX\ActivityLogWithUndo\Recorders\OptionsRecorder;
 use AryanX\ActivityLogWithUndo\Recorders\Registry;
 use AryanX\ActivityLogWithUndo\Retention;
 use AryanX\ActivityLogWithUndo\Service;
@@ -145,13 +147,15 @@ final class LogPage implements Service {
 	/**
 	 * An Undo, Redo or Undo anyway button.
 	 *
-	 * @param Entry $entry Entry.
-	 * @param int   $count Changes in its change set.
-	 * @param bool  $force Undo even when things changed since.
+	 * @param Entry    $entry Entry.
+	 * @param string[] $also  Descriptions of the other changes undone with it.
+	 * @param bool     $force Undo even when things changed since.
 	 * @return string HTML.
 	 */
-	public static function undo_link( Entry $entry, int $count, bool $force ): string {
-		$redo = null !== $entry->undo_of;
+	public static function undo_link( Entry $entry, array $also, bool $force ): string {
+		$redo  = null !== $entry->undo_of;
+		$also  = array_values( array_map( 'strval', $also ) );
+		$count = 1 + count( $also );
 		if ( $force ) {
 			$label   = __( 'Undo anyway', 'activity-log-with-undo' );
 			$confirm = __( 'Undo anyway? This also overwrites what changed since.', 'activity-log-with-undo' );
@@ -159,9 +163,19 @@ final class LogPage implements Service {
 			$label   = __( 'Redo', 'activity-log-with-undo' );
 			$confirm = __( 'Redo the change this undo reversed?', 'activity-log-with-undo' );
 		} else {
-			$label = __( 'Undo', 'activity-log-with-undo' );
-			/* translators: %d: number of changes. */
-			$confirm = $count > 1 ? sprintf( __( 'Undo these %d changes, saved together?', 'activity-log-with-undo' ), $count ) : __( 'Undo this change?', 'activity-log-with-undo' );
+			$label   = __( 'Undo', 'activity-log-with-undo' );
+			$confirm = __( 'Undo this change?', 'activity-log-with-undo' );
+		}
+
+		if ( $also ) {
+			$shown = array_slice( $also, 0, 5 );
+			$list  = implode( '; ', $shown );
+			if ( count( $also ) > count( $shown ) ) {
+				/* translators: %d: number of further changes. */
+				$list .= '; ' . sprintf( _n( 'and %d more', 'and %d more', count( $also ) - count( $shown ), 'activity-log-with-undo' ), count( $also ) - count( $shown ) );
+			}
+			/* translators: 1: the question, e.g. "Undo this change?", 2: number of other changes, 3: their descriptions. */
+			$confirm = sprintf( _n( '%1$s It also undoes %2$d other change saved with it: %3$s.', '%1$s It also undoes %2$d other changes saved with it: %3$s.', count( $also ), 'activity-log-with-undo' ), $confirm, count( $also ), $list );
 		}
 
 		$deletes_user = 'user_created' === $entry->event;
@@ -170,8 +184,20 @@ final class LogPage implements Service {
 			$confirm = sprintf( __( 'This deletes the user %s. Their content goes to the person who added them, or to you. Undo?', 'activity-log-with-undo' ), $entry->object_label );
 		}
 
+		/**
+		 * Filters the question asked before an undo, in the log and on the entry screen.
+		 *
+		 * The `activityLogWithUndo.confirmMessage` JavaScript filter sees the result.
+		 *
+		 * @param string   $confirm Question.
+		 * @param Entry    $entry   The entry.
+		 * @param string[] $also    Descriptions of the other changes undone with it.
+		 * @param bool     $force   Whether this is Undo anyway.
+		 */
+		$confirm = (string) apply_filters( 'activity_log_with_undo_confirm_message', $confirm, $entry, $also, $force );
+
 		return sprintf(
-			'<a href="%1$s" class="button %2$s alu-undo" data-alu-entry="%3$d" data-alu-force="%4$d" data-alu-count="%5$d" data-alu-redo="%6$d" data-alu-deletes-user="%7$d" data-alu-confirm="%8$s">%9$s</a>',
+			'<a href="%1$s" class="button %2$s alu-undo" data-alu-entry="%3$d" data-alu-force="%4$d" data-alu-count="%5$d" data-alu-redo="%6$d" data-alu-deletes-user="%7$d" data-alu-also="%8$s" data-alu-confirm="%9$s">%10$s</a>',
 			esc_url( self::undo_url( $entry->id, $force ) ),
 			$force ? 'button-primary alu-undo-anyway' : ( $redo ? 'alu-redo' : 'button-secondary' ),
 			$entry->id,
@@ -179,9 +205,88 @@ final class LogPage implements Service {
 			$count,
 			$redo ? 1 : 0,
 			$deletes_user ? 1 : 0,
+			esc_attr( (string) wp_json_encode( $also ) ),
 			esc_attr( $confirm ),
 			esc_html( $label )
 		);
+	}
+
+	/**
+	 * Name of a kind of object for people: "Page", "Category", "Setting".
+	 *
+	 * @param string $type Object type stored with the entry.
+	 * @return string
+	 */
+	public static function object_type_label( string $type ): string {
+		$labels = array(
+			'option'         => __( 'Setting', 'activity-log-with-undo' ),
+			'network_option' => __( 'Network setting', 'activity-log-with-undo' ),
+			'plugin'         => __( 'Plugin', 'activity-log-with-undo' ),
+			'theme'          => __( 'Theme', 'activity-log-with-undo' ),
+			'user'           => __( 'User', 'activity-log-with-undo' ),
+			'menu'           => __( 'Menu', 'activity-log-with-undo' ),
+			'site'           => __( 'Site', 'activity-log-with-undo' ),
+		);
+
+		$label = $labels[ $type ] ?? '';
+		if ( '' === $label ) {
+			$post_type = get_post_type_object( $type );
+			$taxonomy  = $post_type ? null : get_taxonomy( $type );
+			if ( $post_type ) {
+				$label = (string) $post_type->labels->singular_name;
+			} elseif ( $taxonomy ) {
+				$label = (string) $taxonomy->labels->singular_name;
+			}
+		}
+
+		/**
+		 * Filters the name of a kind of object on the entry screen.
+		 *
+		 * @param string $label Name, or '' when unknown.
+		 * @param string $type  Object type stored with the entry: a post type, taxonomy, option, plugin, theme, user, menu or site.
+		 */
+		$label = (string) apply_filters( 'activity_log_with_undo_object_type_label', $label, $type );
+
+		return '' !== $label ? $label : $type;
+	}
+
+	/**
+	 * Name of the thing that changed, for people.
+	 *
+	 * @param Entry $entry Entry.
+	 * @return string
+	 */
+	public static function object_name( Entry $entry ): string {
+		if ( in_array( $entry->object_type, array( 'option', 'network_option' ), true ) ) {
+			return OptionsRecorder::label_for( $entry->object_id );
+		}
+
+		return '' !== $entry->object_label ? $entry->object_label : '#' . $entry->object_id;
+	}
+
+	/**
+	 * Which agent made a change, and who approved it, for an approved Agent Governance request.
+	 *
+	 * @param Entry $entry Entry.
+	 * @return string Plain text, or '' when no agent was involved.
+	 */
+	public static function agent_line( Entry $entry ): string {
+		if ( ! $entry->by_agent() ) {
+			return '';
+		}
+
+		$agent    = '' !== $entry->agent ? $entry->agent : __( 'An AI agent', 'activity-log-with-undo' );
+		$approver = $entry->approver_name();
+		if ( $entry->agent_request && '' !== $approver ) {
+			/* translators: 1: agent name, 2: request number, 3: user who approved it. */
+			return sprintf( __( '%1$s, request #%2$d, approved by %3$s', 'activity-log-with-undo' ), $agent, $entry->agent_request, $approver );
+		}
+		if ( '' !== $approver ) {
+			/* translators: 1: agent name, 2: user who approved it. */
+			return sprintf( __( '%1$s, approved by %2$s', 'activity-log-with-undo' ), $agent, $approver );
+		}
+
+		return $agent;
 	}
 
 	/**
@@ -228,6 +333,7 @@ final class LogPage implements Service {
 	public function enqueue_assets(): void {
 		wp_enqueue_style( 'activity-log-with-undo-admin', plugins_url( 'assets/admin.css', PLUGIN_FILE ), array(), VERSION );
 		wp_enqueue_script( 'activity-log-with-undo-admin', plugins_url( 'assets/admin.js', PLUGIN_FILE ), array( 'wp-hooks', 'wp-api-fetch' ), VERSION, true );
+		wp_localize_script( 'activity-log-with-undo-admin', 'activityLogWithUndo', array( 'notUndone' => __( 'The change was not undone.', 'activity-log-with-undo' ) ) );
 	}
 
 	/**
@@ -394,8 +500,8 @@ final class LogPage implements Service {
 			<p class="alu-intro"><?php esc_html_e( 'Every change to settings, plugins, themes, users, content, terms, menus and the Site Editor, with what it was before. Undo puts it back.', 'activity-log-with-undo' ); ?></p>
 
 			<nav class="nav-tab-wrapper">
-				<a href="<?php echo esc_url( self::url() ); ?>" class="nav-tab <?php echo 'settings' !== $tab ? 'nav-tab-active' : ''; ?>"><?php esc_html_e( 'Log', 'activity-log-with-undo' ); ?></a>
-				<a href="<?php echo esc_url( self::url( array( 'tab' => 'settings' ) ) ); ?>" class="nav-tab <?php echo 'settings' === $tab ? 'nav-tab-active' : ''; ?>"><?php esc_html_e( 'Settings', 'activity-log-with-undo' ); ?></a>
+				<a href="<?php echo esc_url( self::url() ); ?>" class="nav-tab <?php echo 'settings' !== $tab ? 'nav-tab-active' : ''; ?>"<?php echo 'settings' !== $tab ? ' aria-current="page"' : ''; ?>><?php esc_html_e( 'Log', 'activity-log-with-undo' ); ?></a>
+				<a href="<?php echo esc_url( self::url( array( 'tab' => 'settings' ) ) ); ?>" class="nav-tab <?php echo 'settings' === $tab ? 'nav-tab-active' : ''; ?>"<?php echo 'settings' === $tab ? ' aria-current="page"' : ''; ?>><?php esc_html_e( 'Settings', 'activity-log-with-undo' ); ?></a>
 			</nav>
 
 			<?php
@@ -419,7 +525,7 @@ final class LogPage implements Service {
 	private function render_log(): void {
 		require_once ABSPATH . 'wp-admin/includes/class-wp-list-table.php';
 
-		$table = new EntriesTable( $this->store, $this->registry );
+		$table = new EntriesTable( $this->store, $this->registry, $this->undoer );
 		$table->prepare_items();
 		$set = EntriesTable::filter( 'alu_set' );
 		?>
@@ -455,33 +561,60 @@ final class LogPage implements Service {
 			return;
 		}
 
-		$check  = $this->undoer->check( $entry->id );
-		$set    = $this->store->change_set( $entry->change_set );
-		$format = get_option( 'date_format' ) . ' ' . get_option( 'time_format' );
-		$events = $this->registry->events();
+		$check   = $this->undoer->check( $entry->id );
+		$set     = $this->store->change_set( $entry->change_set );
+		$members = $check instanceof \WP_Error ? $this->undoer->members_of( $entry, $set ) : $check['entries'];
+		$others  = array_values(
+			array_filter(
+				$members,
+				static function ( Entry $other ) use ( $entry ) {
+					return $other->id !== $entry->id;
+				}
+			)
+		);
+		$left    = count( $set ) - count( $others ) - 1;
+		$format  = get_option( 'date_format' ) . ' ' . get_option( 'time_format' );
+		$events  = $this->registry->events();
+		$agent   = self::agent_line( $entry );
+		$type    = self::object_type_label( $entry->object_type );
 		?>
 		<div class="alu-entry" data-alu-entry="<?php echo esc_attr( (string) $entry->id ); ?>">
 			<h2><?php echo esc_html( $this->registry->describe( $entry ) ); ?></h2>
 			<table class="form-table alu-facts" role="presentation">
 				<tr><th scope="row"><?php esc_html_e( 'When', 'activity-log-with-undo' ); ?></th><td><?php echo esc_html( wp_date( $format, $entry->timestamp() ) ); ?></td></tr>
 				<tr><th scope="row"><?php esc_html_e( 'Who', 'activity-log-with-undo' ); ?></th><td><?php echo esc_html( $entry->actor_name() ); ?> <span class="alu-via alu-via-<?php echo esc_attr( $entry->actor_via ); ?>"><?php echo esc_html( self::via_label( $entry->actor_via ) ); ?></span></td></tr>
-				<?php if ( '' !== $entry->ip ) : ?>
-					<tr><th scope="row"><?php esc_html_e( 'IP address', 'activity-log-with-undo' ); ?></th><td><code><?php echo esc_html( $entry->ip ); ?></code></td></tr>
+				<?php if ( '' !== $agent ) : ?>
+					<tr class="alu-agent"><th scope="row"><?php esc_html_e( 'AI agent', 'activity-log-with-undo' ); ?></th><td><?php echo esc_html( $agent ); ?></td></tr>
 				<?php endif; ?>
-				<tr><th scope="row"><?php esc_html_e( 'Event', 'activity-log-with-undo' ); ?></th><td><?php echo esc_html( $events[ $entry->event ] ?? $entry->event ); ?> <code><?php echo esc_html( $entry->event ); ?></code></td></tr>
-				<tr><th scope="row"><?php esc_html_e( 'Object', 'activity-log-with-undo' ); ?></th><td><code><?php echo esc_html( $entry->object_type . ' ' . $entry->object_id ); ?></code> <?php echo esc_html( $entry->object_label ); ?></td></tr>
-				<?php if ( count( $set ) > 1 ) : ?>
+				<?php if ( '' !== $entry->ip ) : ?>
+					<tr><th scope="row"><?php esc_html_e( 'IP address', 'activity-log-with-undo' ); ?></th><td><span dir="ltr"><?php echo esc_html( $entry->ip ); ?></span></td></tr>
+				<?php endif; ?>
+				<tr><th scope="row"><?php esc_html_e( 'What happened', 'activity-log-with-undo' ); ?></th><td><?php echo esc_html( $events[ $entry->event ] ?? $entry->event ); ?></td></tr>
+				<tr><th scope="row"><?php esc_html_e( 'What changed', 'activity-log-with-undo' ); ?></th><td><?php echo esc_html( $type . ': ' . self::object_name( $entry ) ); ?></td></tr>
+				<?php if ( $others ) : ?>
 					<tr>
-						<th scope="row"><?php esc_html_e( 'Saved with', 'activity-log-with-undo' ); ?></th>
+						<th scope="row"><?php esc_html_e( 'Undone together with', 'activity-log-with-undo' ); ?></th>
 						<td>
 							<ul class="alu-set">
-								<?php foreach ( $set as $other ) : ?>
-									<?php if ( $other->id !== $entry->id ) : ?>
-										<li><a href="<?php echo esc_url( self::url( array( 'entry' => $other->id ) ) ); ?>">#<?php echo esc_html( (string) $other->id ); ?></a> <?php echo esc_html( $this->registry->describe( $other ) ); ?></li>
-									<?php endif; ?>
+								<?php foreach ( $others as $other ) : ?>
+									<li><a href="<?php echo esc_url( self::url( array( 'entry' => $other->id ) ) ); ?>">#<?php echo esc_html( (string) $other->id ); ?></a> <?php echo esc_html( $this->registry->describe( $other ) ); ?></li>
 								<?php endforeach; ?>
 							</ul>
 							<p class="description"><?php esc_html_e( 'These were saved in the same request, so Undo puts all of them back together.', 'activity-log-with-undo' ); ?></p>
+						</td>
+					</tr>
+				<?php endif; ?>
+				<?php if ( $left > 0 ) : ?>
+					<tr>
+						<th scope="row"><?php esc_html_e( 'Saved with', 'activity-log-with-undo' ); ?></th>
+						<td>
+							<a href="<?php echo esc_url( add_query_arg( 'alu_set', $entry->change_set, self::url() ) ); ?>">
+								<?php
+								/* translators: %d: number of changes. */
+								echo esc_html( sprintf( _n( '%d other change from the same request', '%d other changes from the same request', $left, 'activity-log-with-undo' ), $left ) );
+								?>
+							</a>
+							<p class="description"><?php esc_html_e( 'Undo leaves these alone: they cannot be undone, were undone already, or are not settings.', 'activity-log-with-undo' ); ?></p>
 						</td>
 					</tr>
 				<?php endif; ?>
@@ -500,6 +633,23 @@ final class LogPage implements Service {
 			<?php $this->render_states( $entry ); ?>
 
 			<?php $this->render_undo( $entry, $check ); ?>
+
+			<details class="alu-tech">
+				<summary><?php esc_html_e( 'Technical details', 'activity-log-with-undo' ); ?></summary>
+				<table class="widefat striped alu-tech-table">
+					<tbody>
+						<tr><th scope="row"><?php esc_html_e( 'Entry', 'activity-log-with-undo' ); ?></th><td><code dir="ltr"><?php echo esc_html( (string) $entry->id ); ?></code></td></tr>
+						<tr><th scope="row"><?php esc_html_e( 'Event', 'activity-log-with-undo' ); ?></th><td><code dir="ltr"><?php echo esc_html( $entry->event ); ?></code></td></tr>
+						<tr><th scope="row"><?php esc_html_e( 'Recorder', 'activity-log-with-undo' ); ?></th><td><code dir="ltr"><?php echo esc_html( $entry->recorder ); ?></code></td></tr>
+						<tr><th scope="row"><?php esc_html_e( 'Object type and ID', 'activity-log-with-undo' ); ?></th><td><code dir="ltr"><?php echo esc_html( $entry->object_type . ' ' . $entry->object_id ); ?></code></td></tr>
+						<tr><th scope="row"><?php esc_html_e( 'Source', 'activity-log-with-undo' ); ?></th><td><code dir="ltr"><?php echo esc_html( $entry->actor_via ); ?></code></td></tr>
+						<tr><th scope="row"><?php esc_html_e( 'Change set', 'activity-log-with-undo' ); ?></th><td><code dir="ltr"><?php echo esc_html( $entry->change_set ); ?></code></td></tr>
+						<?php if ( $entry->agent_request ) : ?>
+							<tr><th scope="row"><?php esc_html_e( 'Agent Governance request', 'activity-log-with-undo' ); ?></th><td><code dir="ltr"><?php echo esc_html( (string) $entry->agent_request ); ?></code></td></tr>
+						<?php endif; ?>
+					</tbody>
+				</table>
+			</details>
 		</div>
 		<?php
 	}
@@ -512,13 +662,13 @@ final class LogPage implements Service {
 	private function render_states( Entry $entry ): void {
 		$left_out = max( Payload::left_out( $entry->before ), Payload::left_out( $entry->after ) );
 		if ( $left_out ) {
-			echo '<div class="notice notice-info inline"><p>' . esc_html(
-				sprintf(
-					/* translators: %s: size, e.g. "300 KB". */
-					__( 'This change was too big to keep (%s), so it is logged without its values and cannot be undone. The limit is in the settings.', 'activity-log-with-undo' ),
-					size_format( $left_out )
-				)
-			) . '</p></div>';
+			$full    = in_array( Payload::LOG_FULL, array( Payload::left_out_reason( $entry->before ), Payload::left_out_reason( $entry->after ) ), true );
+			$message = $full
+				/* translators: %s: size limit of the log, e.g. "512 MB". */
+				? sprintf( __( 'The log was over its size limit (%s) when this change was made, so it is logged without its values and cannot be undone. Delete old entries on the Settings tab.', 'activity-log-with-undo' ), size_format( Logger::max_log_size() ) )
+				/* translators: %s: size, e.g. "300 KB". */
+				: sprintf( __( 'This change was too big to keep (%s), so it is logged without its values and cannot be undone. The limit is in the settings.', 'activity-log-with-undo' ), size_format( $left_out ) );
+			echo '<div class="notice notice-info inline alu-left-out"><p>' . esc_html( $message ) . '</p></div>';
 			return;
 		}
 
@@ -539,15 +689,21 @@ final class LogPage implements Service {
 			return;
 		}
 
-		$count   = count( $check['entries'] );
 		$blocked = $check['blocked'][ $entry->id ] ?? null;
 		if ( $blocked ) {
 			printf( '<div class="notice notice-info inline alu-not-undoable"><p>%s</p></div>', esc_html( $blocked->get_error_message() ) );
 			return;
 		}
 
+		$also = array();
+		foreach ( $check['entries'] as $other ) {
+			if ( $other->id !== $entry->id ) {
+				$also[] = $this->registry->describe( $other );
+			}
+		}
+
 		if ( ! $check['conflicts'] ) {
-			echo '<p class="alu-actions">' . self::undo_link( $entry, $count, false ) . '</p>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Escaped in undo_link().
+			echo '<p class="alu-actions">' . self::undo_link( $entry, $also, false ) . '</p>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Escaped in undo_link().
 			return;
 		}
 
@@ -559,7 +715,7 @@ final class LogPage implements Service {
 			}
 			echo wp_kses_post( DiffView::compare( $conflict['expected'], $conflict['current'], __( 'Right after this change', 'activity-log-with-undo' ), __( 'Now', 'activity-log-with-undo' ) ) );
 		}
-		echo '<p class="alu-actions">' . self::undo_link( $entry, $count, true ) . '</p>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Escaped in undo_link().
+		echo '<p class="alu-actions">' . self::undo_link( $entry, $also, true ) . '</p>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Escaped in undo_link().
 	}
 
 	/**
@@ -626,6 +782,16 @@ final class LogPage implements Service {
 				<?php
 				/* translators: 1: number of entries, 2: number of days. */
 				echo esc_html( sprintf( __( 'The log holds %1$s entries. Entries older than %2$d days are deleted once a day; this does it now.', 'activity-log-with-undo' ), number_format_i18n( $this->store->count() ), $this->settings->retention_days() ) );
+				$size = $this->store->size();
+				if ( $size > 0 ) {
+					echo ' ' . esc_html(
+						Logger::max_log_size() > 0
+							/* translators: 1: size of the log, 2: its limit. */
+							? sprintf( __( 'It takes %1$s of the %2$s it may use.', 'activity-log-with-undo' ), size_format( $size, 1 ), size_format( Logger::max_log_size() ) )
+							/* translators: %s: size of the log. */
+							: sprintf( __( 'It takes %s.', 'activity-log-with-undo' ), size_format( $size, 1 ) )
+					);
+				}
 				?>
 			</p>
 			<?php submit_button( __( 'Delete old entries now', 'activity-log-with-undo' ), 'secondary', 'submit', false ); ?>

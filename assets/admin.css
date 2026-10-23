@@ -10,7 +10,14 @@
 }
 
 .alu-page .alu-muted {
-	color: #8c8f94;
+	/* 5.2:1 on the yellow of a changed row, 5.5:1 on white. */
+	color: #646970;
+}
+
+/* Links inside running text are underlined, not told apart by colour alone. */
+.alu-page .alu-meta a,
+.alu-page .alu-set-note a {
+	text-decoration: underline;
 }
 
 .alu-page .alu-via {
@@ -116,6 +123,35 @@
 	overflow: auto;
 	white-space: pre-wrap;
 	font-size: 12px;
+	direction: ltr;
+	text-align: left;
+}
+
+.alu-page .alu-tech {
+	max-width: 1100px;
+	margin: 24px 0 8px;
+}
+
+.alu-page .alu-tech summary {
+	cursor: pointer;
+	color: #50575e;
+}
+
+.alu-page .alu-tech-table {
+	max-width: 760px;
+	margin-top: 8px;
+}
+
+.alu-page .alu-tech-table th {
+	width: 220px;
+}
+
+.alu-cleanup-actions {
+	margin: 0 0 8px;
+}
+
+.alu-cleanup-actions .button {
+	margin-right: 6px;
 }
 
 .alu-page .alu-items {

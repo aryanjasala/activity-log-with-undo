@@ -132,6 +132,27 @@ final class Entry {
 	public ?int $undo_of = null;
 
 	/**
+	 * Name of the AI agent whose approved request made the change, or ''.
+	 *
+	 * @var string
+	 */
+	public string $agent = '';
+
+	/**
+	 * Agent Governance request ID of that agent call, or 0.
+	 *
+	 * @var int
+	 */
+	public int $agent_request = 0;
+
+	/**
+	 * User who approved the agent's request, 0 for none, ERASED when removed.
+	 *
+	 * @var int
+	 */
+	public int $approved_by = 0;
+
+	/**
 	 * Builds an entry from a database row.
 	 *
 	 * @param array|object $row Row.
@@ -157,6 +178,9 @@ final class Entry {
 		$entry->undoable      = ! empty( $row['undoable'] );
 		$entry->undone_by     = isset( $row['undone_by'] ) ? (int) $row['undone_by'] : null;
 		$entry->undo_of       = isset( $row['undo_of'] ) ? (int) $row['undo_of'] : null;
+		$entry->agent         = (string) ( $row['agent'] ?? '' );
+		$entry->agent_request = (int) ( $row['agent_request'] ?? 0 );
+		$entry->approved_by   = (int) ( $row['approved_by'] ?? 0 );
 
 		return $entry;
 	}
@@ -217,6 +241,32 @@ final class Entry {
 	}
 
 	/**
+	 * Login of the user who approved the agent's request, or a stand-in.
+	 *
+	 * @return string
+	 */
+	public function approver_name(): string {
+		if ( self::ERASED === $this->approved_by ) {
+			return __( '(removed)', 'activity-log-with-undo' );
+		}
+		if ( ! $this->approved_by ) {
+			return '';
+		}
+		$user = get_userdata( $this->approved_by );
+
+		return $user ? $user->user_login : '#' . $this->approved_by;
+	}
+
+	/**
+	 * Whether an AI agent's approved request made the change.
+	 *
+	 * @return bool
+	 */
+	public function by_agent(): bool {
+		return '' !== $this->agent || $this->agent_request > 0 || 0 !== $this->approved_by;
+	}
+
+	/**
 	 * The entry as plain data, for WP-CLI, the REST API and abilities.
 	 *
 	 * @param bool $with_states Include the before and after states.
@@ -238,6 +288,12 @@ final class Entry {
 			'undoable'     => $this->undoable,
 			'undone_by'    => $this->undone_by,
 			'undo_of'      => $this->undo_of,
+			'agent'        => $this->by_agent() ? array(
+				'name'        => $this->agent,
+				'request'     => $this->agent_request,
+				'approved_by' => $this->approved_by,
+				'approver'    => $this->approver_name(),
+			) : null,
 		);
 
 		if ( $with_states ) {

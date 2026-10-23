@@ -11,6 +11,7 @@ use AryanX\ActivityLogWithUndo\Context;
 use AryanX\ActivityLogWithUndo\Entry;
 use AryanX\ActivityLogWithUndo\Recorders\Registry;
 use AryanX\ActivityLogWithUndo\Store;
+use AryanX\ActivityLogWithUndo\Undoer;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -46,14 +47,30 @@ final class EntriesTable extends \WP_List_Table {
 	private array $set_sizes = array();
 
 	/**
+	 * Entries of the change sets on this page that hold more than one entry, keyed by change set.
+	 *
+	 * @var array<string, Entry[]>
+	 */
+	private array $sets = array();
+
+	/**
+	 * Works out what an undo reverses.
+	 *
+	 * @var Undoer|null
+	 */
+	private ?Undoer $undoer;
+
+	/**
 	 * Sets up the table.
 	 *
-	 * @param Store    $store    Entries.
-	 * @param Registry $registry Recorders.
+	 * @param Store       $store    Entries.
+	 * @param Registry    $registry Recorders.
+	 * @param Undoer|null $undoer   Works out what an undo reverses, for the question asked first.
 	 */
-	public function __construct( Store $store, Registry $registry ) {
+	public function __construct( Store $store, Registry $registry, ?Undoer $undoer = null ) {
 		$this->store    = $store;
 		$this->registry = $registry;
+		$this->undoer   = $undoer;
 
 		parent::__construct(
 			array(
@@ -131,6 +148,28 @@ final class EntriesTable extends \WP_List_Table {
 			)
 		);
 
+		// One query for the change sets on this page, so each Undo can name what else it undoes.
+		$shared = array_keys(
+			array_filter(
+				$this->set_sizes,
+				static function ( $size ) {
+					return $size > 1;
+				}
+			)
+		);
+		if ( $shared && $this->undoer ) {
+			$members = $this->store->find(
+				array(
+					'change_set' => $shared,
+					'per_page'   => Store::MAX_PER_PAGE,
+					'order'      => 'ASC',
+				)
+			)['entries'];
+			foreach ( $members as $member ) {
+				$this->sets[ $member->change_set ][] = $member;
+			}
+		}
+
 		$this->_column_headers = array( $this->get_columns(), array(), array(), 'change' );
 		$this->set_pagination_args(
 			array(
@@ -179,7 +218,8 @@ final class EntriesTable extends \WP_List_Table {
 	 */
 	protected function column_cb( $item ): string {
 		if ( ! $item->undoable || $item->is_undone() ) {
-			return '';
+			/* translators: %d: entry number. */
+			return '<span class="screen-reader-text">' . esc_html( sprintf( __( 'Change #%d cannot be selected for undo', 'activity-log-with-undo' ), $item->id ) ) . '</span>';
 		}
 
 		return sprintf(
@@ -238,8 +278,15 @@ final class EntriesTable extends \WP_List_Table {
 	 * @return string
 	 */
 	protected function column_user( $item ): string {
+		$agent = LogPage::agent_line( $item );
 
-		return sprintf( '%1$s<br><span class="alu-via alu-via-%2$s">%3$s</span>', esc_html( $item->actor_name() ), esc_attr( $item->actor_via ), esc_html( LogPage::via_label( $item->actor_via ) ) );
+		return sprintf(
+			'%1$s<br><span class="alu-via alu-via-%2$s">%3$s</span>%4$s',
+			esc_html( $item->actor_name() ),
+			esc_attr( $item->actor_via ),
+			esc_html( LogPage::via_label( $item->actor_via ) ),
+			'' !== $agent ? '<div class="alu-meta alu-agent">' . esc_html( $agent ) . '</div>' : ''
+		);
 	}
 
 	/**
@@ -279,7 +326,28 @@ final class EntriesTable extends \WP_List_Table {
 			return '<span class="alu-status alu-muted">' . esc_html__( 'Logged only', 'activity-log-with-undo' ) . '</span>';
 		}
 
-		return LogPage::undo_link( $item, $this->set_sizes[ $item->change_set ] ?? 1, false );
+		return LogPage::undo_link( $item, $this->also( $item ), false );
+	}
+
+	/**
+	 * Descriptions of the other changes an undo of this entry reverses.
+	 *
+	 * @param Entry $item Entry.
+	 * @return string[]
+	 */
+	private function also( Entry $item ): array {
+		if ( ! $this->undoer || empty( $this->sets[ $item->change_set ] ) ) {
+			return array();
+		}
+
+		$also = array();
+		foreach ( $this->undoer->members_of( $item, $this->sets[ $item->change_set ] ) as $member ) {
+			if ( $member->id !== $item->id ) {
+				$also[] = $this->registry->describe( $member );
+			}
+		}
+
+		return $also;
 	}
 
 	/**

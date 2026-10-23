@@ -11,7 +11,9 @@ defined( 'ABSPATH' ) || exit;
 
 /**
  * Works out how a change was made (admin, REST, application password,
- * WP-CLI, cron, XML-RPC or an ability) and the IP address to store.
+ * WP-CLI, cron, XML-RPC or an ability), whether a person started it, the IP
+ * address to store, and which AI agent and approver are behind it when
+ * Agent Governance runs a request someone approved.
  */
 final class Context implements Service {
 
@@ -39,6 +41,13 @@ final class Context implements Service {
 	private bool $app_password = false;
 
 	/**
+	 * The Agent Governance request being run after its approval, if any.
+	 *
+	 * @var array{agent: string, request: int, approved_by: int}|null
+	 */
+	private ?array $agent = null;
+
+	/**
 	 * Sets up the context.
 	 *
 	 * @param Settings $settings Saved settings.
@@ -54,6 +63,92 @@ final class Context implements Service {
 		add_action( 'wp_before_execute_ability', array( $this, 'ability_started' ) );
 		add_action( 'wp_after_execute_ability', array( $this, 'ability_ended' ) );
 		add_action( 'application_password_did_authenticate', array( $this, 'app_password_used' ) );
+
+		// Agent Governance runs a held agent call right after someone approves it.
+		add_action( 'agent_governance_request_approved', array( $this, 'agent_request_approved' ), 10, 2 );
+		add_action( 'agent_governance_request_executed', array( $this, 'agent_request_done' ) );
+	}
+
+	/**
+	 * Agent Governance approved a held agent request and is about to run it.
+	 *
+	 * @param mixed $request     The request row: id, agent, identity, via, user_id.
+	 * @param mixed $approver_id Who approved it.
+	 */
+	public function agent_request_approved( $request, $approver_id = 0 ): void {
+		$request = is_array( $request ) ? $request : array();
+		$label   = (string) ( $request['agent'] ?? '' );
+		$agent   = array(
+			'agent'       => '' !== $label ? $label : (string) ( $request['identity'] ?? '' ),
+			'request'     => (int) ( $request['id'] ?? 0 ),
+			'approved_by' => (int) $approver_id,
+		);
+
+		/**
+		 * Filters what an entry records about the AI agent behind an approved change.
+		 *
+		 * Return an empty array to record nothing.
+		 *
+		 * @param array $agent       agent (its name), request (Agent Governance request ID), approved_by (user ID).
+		 * @param array $request     The Agent Governance request row.
+		 * @param int   $approver_id Who approved it.
+		 */
+		$agent = (array) apply_filters( 'activity_log_with_undo_agent_context', $agent, $request, (int) $approver_id );
+
+		$this->agent = $agent ? array(
+			'agent'       => wp_html_excerpt( sanitize_text_field( (string) ( $agent['agent'] ?? '' ) ), 190, '' ),
+			'request'     => max( 0, (int) ( $agent['request'] ?? 0 ) ),
+			'approved_by' => max( 0, (int) ( $agent['approved_by'] ?? 0 ) ),
+		) : null;
+	}
+
+	/**
+	 * The approved request finished running.
+	 */
+	public function agent_request_done(): void {
+		$this->agent = null;
+	}
+
+	/**
+	 * The AI agent and approver behind the change being logged, when Agent Governance runs an approved request.
+	 *
+	 * @return array{agent: string, request: int, approved_by: int}|null
+	 */
+	public function agent(): ?array {
+		return $this->agent;
+	}
+
+	/**
+	 * Whether a person started this request: WP-CLI, or a signed-in user in
+	 * wp-admin, the REST API, admin-ajax or XML-RPC. Cron jobs and visitors on
+	 * the front end are not.
+	 *
+	 * Settings changed outside such a request are not logged, unless they are
+	 * on the always-logged list (`activity_log_with_undo_logged_options`).
+	 *
+	 * @return bool
+	 */
+	public function user_initiated(): bool {
+		$via = $this->via();
+		if ( 'cron' === $via ) {
+			$user = false;
+		} elseif ( 'cli' === $via ) {
+			$user = true;
+		} else {
+			$api  = ( defined( 'REST_REQUEST' ) && REST_REQUEST ) || ( defined( 'XMLRPC_REQUEST' ) && XMLRPC_REQUEST ) || wp_doing_ajax() || is_admin();
+			$user = $api && get_current_user_id() > 0;
+		}
+
+		/**
+		 * Filters whether a person started the current request.
+		 *
+		 * Settings changed in a request nobody started (cron, a visitor on the
+		 * front end) are not logged unless they are always logged.
+		 *
+		 * @param bool   $user Whether a person started it.
+		 * @param string $via  How the change is made: admin, rest, app-password, cli, cron, xmlrpc or ability.
+		 */
+		return (bool) apply_filters( 'activity_log_with_undo_is_user_request', $user, $via );
 	}
 
 	/**

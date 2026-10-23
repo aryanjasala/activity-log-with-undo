@@ -95,6 +95,91 @@ final class Undoer {
 	}
 
 	/**
+	 * The entries an undo of this entry reverses: the entry, and the other
+	 * changes saved in the same request that can still be undone.
+	 *
+	 * @param Entry $entry Entry.
+	 * @return Entry[] Oldest first.
+	 */
+	public function members( Entry $entry ): array {
+		return $this->members_of( $entry, $this->store->change_set( $entry->change_set ) );
+	}
+
+	/**
+	 * The entries of a change set that an undo of one of them reverses.
+	 *
+	 * Entries that cannot be undone or were undone already are left out, and
+	 * so are entries a recorder says do not belong with the rest: options that
+	 * are not logged any more, such as another plugin's cache that version 1
+	 * logged next to a person's change. Such an entry, undone directly, is
+	 * undone on its own.
+	 *
+	 * @param Entry   $entry The entry being undone.
+	 * @param Entry[] $set   Every entry of its change set.
+	 * @return Entry[] Oldest first.
+	 */
+	public function members_of( Entry $entry, array $set ): array {
+		// An entry that does not belong with the rest (another plugin's option) is undone on its own.
+		$set     = $this->belongs( $entry ) ? $set : array();
+		$members = array();
+		foreach ( $set as $item ) {
+			if ( $item->change_set !== $entry->change_set || ! $item->undoable || $item->is_undone() ) {
+				continue;
+			}
+			if ( $item->id === $entry->id || $this->belongs( $item ) ) {
+				$members[ $item->id ] = $item;
+			}
+		}
+		if ( $entry->undoable && ! $entry->is_undone() ) {
+			$members[ $entry->id ] = $entry;
+		}
+
+		/**
+		 * Filters the entries undone together with an entry.
+		 *
+		 * Remove entries to leave them alone. Only entries of the same change
+		 * set count, and the entry itself is always undone.
+		 *
+		 * @param Entry[] $members The entries, keyed by ID.
+		 * @param Entry   $entry   The entry being undone.
+		 */
+		/**
+		 * Whatever the filter returned.
+		 *
+		 * @var array<mixed> $filtered
+		 */
+		$filtered = (array) apply_filters( 'activity_log_with_undo_change_set_entries', $members, $entry );
+
+		$out = array();
+		foreach ( $filtered as $item ) {
+			if ( $item instanceof Entry && isset( $members[ $item->id ] ) ) {
+				$out[ $item->id ] = $item;
+			}
+		}
+		if ( isset( $members[ $entry->id ] ) ) {
+			$out[ $entry->id ] = $members[ $entry->id ];
+		}
+		ksort( $out );
+
+		return array_values( $out );
+	}
+
+	/**
+	 * Whether another entry of the change set is undone together with the one asked for.
+	 *
+	 * @param Entry $item Entry.
+	 * @return bool
+	 */
+	private function belongs( Entry $item ): bool {
+		$recorder = $this->registry->get( $item->recorder );
+		if ( $recorder && method_exists( $recorder, 'in_change_set' ) ) {
+			return (bool) $recorder->in_change_set( $item );
+		}
+
+		return true;
+	}
+
+	/**
 	 * What undoing an entry would do: the entries in its change set, the ones
 	 * that cannot be undone, and the ones that changed since.
 	 *
@@ -111,15 +196,7 @@ final class Undoer {
 			return $can instanceof \WP_Error ? $can : new \WP_Error( 'activity_log_with_undo_cannot_undo', __( 'This change cannot be undone.', 'activity-log-with-undo' ) );
 		}
 
-		$set     = $this->store->change_set( $entry->change_set );
-		$entries = array_values(
-			array_filter(
-				$set ? $set : array( $entry ),
-				static function ( Entry $item ) {
-					return $item->undoable && ! $item->is_undone();
-				}
-			)
-		);
+		$entries = $this->members( $entry );
 
 		$blocked = array();
 		foreach ( $entries as $item ) {

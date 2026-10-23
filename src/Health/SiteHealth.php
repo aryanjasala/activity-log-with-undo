@@ -8,16 +8,20 @@
 namespace AryanX\ActivityLogWithUndo\Health;
 
 use AryanX\ActivityLogWithUndo\Admin\LogPage;
+use AryanX\ActivityLogWithUndo\Cleanup;
+use AryanX\ActivityLogWithUndo\Logger;
 use AryanX\ActivityLogWithUndo\Retention;
 use AryanX\ActivityLogWithUndo\Schema;
 use AryanX\ActivityLogWithUndo\Service;
 use AryanX\ActivityLogWithUndo\Settings;
+use AryanX\ActivityLogWithUndo\Store;
 
 defined( 'ABSPATH' ) || exit;
 
 /**
  * Adds an Activity Log with Undo test to Tools > Site Health: is the table
- * there, is the clean-up scheduled, and are any recorders off.
+ * there, is it over its size limit, is the clean-up scheduled, does it hold
+ * old entries of internal options, and are any recorders off.
  */
 final class SiteHealth implements Service {
 
@@ -29,12 +33,21 @@ final class SiteHealth implements Service {
 	private Settings $settings;
 
 	/**
+	 * Entries, for the size of the log.
+	 *
+	 * @var Store|null
+	 */
+	private ?Store $store;
+
+	/**
 	 * Sets up the check.
 	 *
-	 * @param Settings $settings Saved settings.
+	 * @param Settings   $settings Saved settings.
+	 * @param Store|null $store    Entries, for the size of the log.
 	 */
-	public function __construct( Settings $settings ) {
+	public function __construct( Settings $settings, ?Store $store = null ) {
 		$this->settings = $settings;
+		$this->store    = $store;
 	}
 
 	/**
@@ -70,6 +83,28 @@ final class SiteHealth implements Service {
 
 		if ( ! Schema::exists() ) {
 			return $this->result( 'critical', __( 'The activity log table is missing', 'activity-log-with-undo' ), __( 'Changes are not being logged and cannot be undone. Deactivate and activate Activity Log with Undo to create the table again.', 'activity-log-with-undo' ), '' );
+		}
+
+		$max  = Logger::max_log_size();
+		$size = $this->store && $max > 0 ? $this->store->size() : 0;
+		if ( $size > $max && $max > 0 ) {
+			return $this->result(
+				'critical',
+				__( 'The activity log is full', 'activity-log-with-undo' ),
+				/* translators: 1: size of the log, 2: its limit. */
+				sprintf( __( 'The log takes %1$s, over its limit of %2$s. New changes are logged without their old values, so they cannot be undone. Delete old entries on the Settings tab, or keep fewer days.', 'activity-log-with-undo' ), size_format( $size, 1 ), size_format( $max ) ),
+				$action
+			);
+		}
+
+		$cleanup = Cleanup::state();
+		if ( in_array( $cleanup['status'], array( 'pending', 'offered' ), true ) ) {
+			return $this->result(
+				'recommended',
+				__( 'The activity log holds entries nobody can act on', 'activity-log-with-undo' ),
+				__( 'An earlier version logged other plugins\' internal options, such as caches and indexes. Delete those entries from the notice in wp-admin, or with wp activity-log-with-undo cleanup.', 'activity-log-with-undo' ),
+				$action
+			);
 		}
 
 		if ( ! wp_next_scheduled( Retention::HOOK ) ) {

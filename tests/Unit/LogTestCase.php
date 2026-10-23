@@ -115,6 +115,7 @@ abstract class LogTestCase extends TestCase {
 				return isset( $this->rows[ $id ] ) ? Entry::from_row( $this->rows[ $id ] ) : null;
 			}
 		)->byDefault();
+		$this->store->shouldReceive( 'size' )->andReturn( 0 )->byDefault();
 		$this->store->shouldReceive( 'change_set' )->andReturnUsing(
 			function ( string $set ) {
 				$out = array();
