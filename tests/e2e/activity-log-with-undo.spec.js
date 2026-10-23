@@ -25,7 +25,9 @@ const count = ( where ) => Number( JSON.parse( sql( `SELECT COUNT(*) FROM wp_act
 const legacyEntry = ( fields ) =>
 	wpEval( `
 		global $wpdb;
-		$wpdb->insert( $wpdb->prefix . 'activity_log_with_undo', array_merge( array( 'created_gmt' => gmdate( 'Y-m-d H:i:s' ), 'recorder' => 'options', 'event' => 'option_updated', 'object_type' => 'option', 'actor_user_id' => 1, 'actor_via' => 'admin', 'undoable' => 1 ), json_decode( ${ JSON.stringify( JSON.stringify( fields ) ) }, true ) ) );
+		$row = array_merge( array( 'created_gmt' => gmdate( 'Y-m-d H:i:s' ), 'recorder' => 'options', 'event' => 'option_updated', 'object_type' => 'option', 'actor_user_id' => 1, 'actor_via' => 'admin', 'undoable' => 1 ), json_decode( ${ JSON.stringify( JSON.stringify( fields ) ) }, true ) );
+		// Every column as a string: WordPress would otherwise treat object_id as a number.
+		$wpdb->insert( $wpdb->prefix . 'activity_log_with_undo', $row, array_fill( 0, count( $row ), '%s' ) );
 		wp_cache_set_last_changed( 'activity_log_with_undo' );
 		echo $wpdb->insert_id;
 	` );
