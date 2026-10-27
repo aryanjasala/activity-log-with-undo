@@ -2,12 +2,12 @@
 /**
  * Tests for the posts recorder.
  *
- * @package AryanX\ActivityLogWithUndo
+ * @package AryanX\Axle\ActivityLogWithUndo
  */
 
-namespace AryanX\ActivityLogWithUndo\Tests\Unit;
+namespace AryanX\Axle\ActivityLogWithUndo\Tests\Unit;
 
-use AryanX\ActivityLogWithUndo\Recorders\PostsRecorder;
+use AryanX\Axle\ActivityLogWithUndo\Recorders\PostsRecorder;
 use Brain\Monkey\Filters;
 use Brain\Monkey\Functions;
 

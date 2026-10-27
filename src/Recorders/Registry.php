@@ -2,14 +2,14 @@
 /**
  * The recorders in use.
  *
- * @package AryanX\ActivityLogWithUndo
+ * @package AryanX\Axle\ActivityLogWithUndo
  */
 
-namespace AryanX\ActivityLogWithUndo\Recorders;
+namespace AryanX\Axle\ActivityLogWithUndo\Recorders;
 
-use AryanX\ActivityLogWithUndo\Entry;
-use AryanX\ActivityLogWithUndo\Service;
-use AryanX\ActivityLogWithUndo\Settings;
+use AryanX\Axle\ActivityLogWithUndo\Entry;
+use AryanX\Axle\ActivityLogWithUndo\Service;
+use AryanX\Axle\ActivityLogWithUndo\Settings;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -46,7 +46,7 @@ final class Registry implements Service {
 
 		/**
 		 * Filters the recorders. Add your own (anything implementing
-		 * AryanX\ActivityLogWithUndo\Recorders\Recorder) or remove one.
+		 * AryanX\Axle\ActivityLogWithUndo\Recorders\Recorder) or remove one.
 		 *
 		 * @param Recorder[] $recorders Built-in recorders, keyed by ID.
 		 */

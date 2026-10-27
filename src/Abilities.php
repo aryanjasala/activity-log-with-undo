@@ -2,13 +2,13 @@
 /**
  * Abilities: read the log and undo changes, for AI agents and other Abilities API clients.
  *
- * @package AryanX\ActivityLogWithUndo
+ * @package AryanX\Axle\ActivityLogWithUndo
  */
 
-namespace AryanX\ActivityLogWithUndo;
+namespace AryanX\Axle\ActivityLogWithUndo;
 
-use AryanX\ActivityLogWithUndo\Admin\LogPage;
-use AryanX\ActivityLogWithUndo\Recorders\Registry;
+use AryanX\Axle\ActivityLogWithUndo\Admin\LogPage;
+use AryanX\Axle\ActivityLogWithUndo\Recorders\Registry;
 
 defined( 'ABSPATH' ) || exit;
 

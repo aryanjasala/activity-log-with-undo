@@ -2,15 +2,15 @@
 /**
  * Test doubles: a recorder, and stand-ins for WordPress classes the unit tests touch.
  *
- * @package AryanX\ActivityLogWithUndo
+ * @package AryanX\Axle\ActivityLogWithUndo
  */
 
 // phpcs:ignoreFile
 
-namespace AryanX\ActivityLogWithUndo\Tests\Unit {
+namespace AryanX\Axle\ActivityLogWithUndo\Tests\Unit {
 
-	use AryanX\ActivityLogWithUndo\Entry;
-	use AryanX\ActivityLogWithUndo\Recorders\Recorder;
+	use AryanX\Axle\ActivityLogWithUndo\Entry;
+	use AryanX\Axle\ActivityLogWithUndo\Recorders\Recorder;
 
 	/**
 	 * A recorder whose behaviour each test sets.
@@ -80,7 +80,7 @@ namespace AryanX\ActivityLogWithUndo\Tests\Unit {
 	}
 }
 
-namespace AryanX\ActivityLogWithUndo\Tests\Unit {
+namespace AryanX\Axle\ActivityLogWithUndo\Tests\Unit {
 
 	/**
 	 * A post with every field the recorders read declared, so PHP 8.2+ does not warn.

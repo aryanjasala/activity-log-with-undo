@@ -52,7 +52,7 @@ The undo is logged like any other change, with `undo_of` pointing at the entry i
 | Hook | Type | Use |
 | --- | --- | --- |
 | `activity_log_with_undo_capability` | filter | `( string $capability )`. Who can see the log and undo. Default `manage_options` |
-| `activity_log_with_undo_recorders` | filter | `( Recorder[] $recorders )`. Add your own recorder (anything implementing `AryanX\ActivityLogWithUndo\Recorders\Recorder`) or remove one. Keyed by recorder ID |
+| `activity_log_with_undo_recorders` | filter | `( Recorder[] $recorders )`. Add your own recorder (anything implementing `AryanX\Axle\ActivityLogWithUndo\Recorders\Recorder`) or remove one. Keyed by recorder ID |
 | `activity_log_with_undo_ignored_options` | filter | `( string[] $patterns )`. Options never logged. `*` matches anything. The plugin's own options stay ignored whatever this returns |
 | `activity_log_with_undo_logged_options` | filter | `( string[] $patterns )`. Options always logged, in every request, on top of the settings. Default none. `*` matches anything |
 | `activity_log_with_undo_setting_options` | filter | `( string[] $patterns, bool $network )`. Options that count as settings, logged when a person changes them. Default: the core settings screens, widgets, theme mods, menu settings. Options registered with `register_setting()` count without being listed |
@@ -165,7 +165,7 @@ Dates take `2026-10-01`, an ISO 8601 time or `"2 days ago"`. `purge --older-than
 ## PHP API
 
 ```php
-$plugin = AryanX\ActivityLogWithUndo\Plugin::instance();
+$plugin = AryanX\Axle\ActivityLogWithUndo\Plugin::instance();
 
 $found  = $plugin->store()->find( array( 'event' => 'option_updated', 'per_page' => 10 ) );
 $result = $plugin->undoer()->undo( $found['entries'][0]->id );          // array, or WP_Error

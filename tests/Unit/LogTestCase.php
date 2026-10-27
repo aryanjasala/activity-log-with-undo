@@ -2,17 +2,17 @@
 /**
  * Shared set-up for the log tests.
  *
- * @package AryanX\ActivityLogWithUndo
+ * @package AryanX\Axle\ActivityLogWithUndo
  */
 
-namespace AryanX\ActivityLogWithUndo\Tests\Unit;
+namespace AryanX\Axle\ActivityLogWithUndo\Tests\Unit;
 
-use AryanX\ActivityLogWithUndo\Context;
-use AryanX\ActivityLogWithUndo\Entry;
-use AryanX\ActivityLogWithUndo\Logger;
-use AryanX\ActivityLogWithUndo\Payload;
-use AryanX\ActivityLogWithUndo\Settings;
-use AryanX\ActivityLogWithUndo\Store;
+use AryanX\Axle\ActivityLogWithUndo\Context;
+use AryanX\Axle\ActivityLogWithUndo\Entry;
+use AryanX\Axle\ActivityLogWithUndo\Logger;
+use AryanX\Axle\ActivityLogWithUndo\Payload;
+use AryanX\Axle\ActivityLogWithUndo\Settings;
+use AryanX\Axle\ActivityLogWithUndo\Store;
 use Brain\Monkey\Functions;
 use Mockery;
 

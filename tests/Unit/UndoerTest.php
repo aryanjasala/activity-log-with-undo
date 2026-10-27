@@ -2,17 +2,17 @@
 /**
  * Tests for undo: change sets, conflicts, force, redo and the undo hooks.
  *
- * @package AryanX\ActivityLogWithUndo
+ * @package AryanX\Axle\ActivityLogWithUndo
  */
 
-namespace AryanX\ActivityLogWithUndo\Tests\Unit;
+namespace AryanX\Axle\ActivityLogWithUndo\Tests\Unit;
 
-use AryanX\ActivityLogWithUndo\Entry;
-use AryanX\ActivityLogWithUndo\Logger;
-use AryanX\ActivityLogWithUndo\Recorders\OptionsRecorder;
-use AryanX\ActivityLogWithUndo\Recorders\Registry;
-use AryanX\ActivityLogWithUndo\Settings;
-use AryanX\ActivityLogWithUndo\Undoer;
+use AryanX\Axle\ActivityLogWithUndo\Entry;
+use AryanX\Axle\ActivityLogWithUndo\Logger;
+use AryanX\Axle\ActivityLogWithUndo\Recorders\OptionsRecorder;
+use AryanX\Axle\ActivityLogWithUndo\Recorders\Registry;
+use AryanX\Axle\ActivityLogWithUndo\Settings;
+use AryanX\Axle\ActivityLogWithUndo\Undoer;
 use Brain\Monkey\Actions;
 use Brain\Monkey\Filters;
 use Brain\Monkey\Functions;

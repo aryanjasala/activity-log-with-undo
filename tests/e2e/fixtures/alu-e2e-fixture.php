@@ -3,7 +3,7 @@
  * Plugin Name: Activity Log with Undo E2E fixture
  * Description: Test-only hooks for the end-to-end tests. Copied into mu-plugins for the run, removed after.
  *
- * @package AryanX\ActivityLogWithUndo
+ * @package AryanX\Axle\ActivityLogWithUndo
  */
 
 // phpcs:ignoreFile -- Test fixture, never shipped.

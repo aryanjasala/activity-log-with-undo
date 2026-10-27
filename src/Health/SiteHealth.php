@@ -2,19 +2,19 @@
 /**
  * Site Health check.
  *
- * @package AryanX\ActivityLogWithUndo
+ * @package AryanX\Axle\ActivityLogWithUndo
  */
 
-namespace AryanX\ActivityLogWithUndo\Health;
+namespace AryanX\Axle\ActivityLogWithUndo\Health;
 
-use AryanX\ActivityLogWithUndo\Admin\LogPage;
-use AryanX\ActivityLogWithUndo\Cleanup;
-use AryanX\ActivityLogWithUndo\Logger;
-use AryanX\ActivityLogWithUndo\Retention;
-use AryanX\ActivityLogWithUndo\Schema;
-use AryanX\ActivityLogWithUndo\Service;
-use AryanX\ActivityLogWithUndo\Settings;
-use AryanX\ActivityLogWithUndo\Store;
+use AryanX\Axle\ActivityLogWithUndo\Admin\LogPage;
+use AryanX\Axle\ActivityLogWithUndo\Cleanup;
+use AryanX\Axle\ActivityLogWithUndo\Logger;
+use AryanX\Axle\ActivityLogWithUndo\Retention;
+use AryanX\Axle\ActivityLogWithUndo\Schema;
+use AryanX\Axle\ActivityLogWithUndo\Service;
+use AryanX\Axle\ActivityLogWithUndo\Settings;
+use AryanX\Axle\ActivityLogWithUndo\Store;
 
 defined( 'ABSPATH' ) || exit;
 

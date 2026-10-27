@@ -16,7 +16,7 @@ const reset = () => {
 			// Not set.
 		}
 	}
-	wpEval( 'AryanX\\ActivityLogWithUndo\\Plugin::instance()->store()->truncate();' );
+	wpEval( 'AryanX\\Axle\\ActivityLogWithUndo\\Plugin::instance()->store()->truncate();' );
 	wp( 'transient', 'delete', '--all' );
 };
 const sql = ( query ) => wpEval( `global $wpdb; echo wp_json_encode( $wpdb->get_results( ${ JSON.stringify( query ) }, ARRAY_N ) );` );
@@ -409,7 +409,7 @@ test.describe( 'Activity Log with Undo', () => {
 		age( middle.id, 40 );
 
 		// The daily job keeps 90 days.
-		wpEval( 'AryanX\\ActivityLogWithUndo\\Retention::schedule();' );
+		wpEval( 'AryanX\\Axle\\ActivityLogWithUndo\\Retention::schedule();' );
 		wp( 'cron', 'event', 'run', 'activity_log_with_undo_purge' );
 		expect( entries().map( ( entry ) => entry.id ) ).toEqual( [ newest.id, middle.id ] );
 

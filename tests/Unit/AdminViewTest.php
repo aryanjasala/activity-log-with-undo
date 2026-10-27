@@ -3,15 +3,15 @@
  * Tests for what the log screens show: the undo question, names for people,
  * the agent line, the before and after table, and accessibility details.
  *
- * @package AryanX\ActivityLogWithUndo
+ * @package AryanX\Axle\ActivityLogWithUndo
  */
 
-namespace AryanX\ActivityLogWithUndo\Tests\Unit;
+namespace AryanX\Axle\ActivityLogWithUndo\Tests\Unit;
 
-use AryanX\ActivityLogWithUndo\Admin\DiffView;
-use AryanX\ActivityLogWithUndo\Admin\EntriesTable;
-use AryanX\ActivityLogWithUndo\Admin\LogPage;
-use AryanX\ActivityLogWithUndo\Entry;
+use AryanX\Axle\ActivityLogWithUndo\Admin\DiffView;
+use AryanX\Axle\ActivityLogWithUndo\Admin\EntriesTable;
+use AryanX\Axle\ActivityLogWithUndo\Admin\LogPage;
+use AryanX\Axle\ActivityLogWithUndo\Entry;
 use Brain\Monkey\Filters;
 use Brain\Monkey\Functions;
 

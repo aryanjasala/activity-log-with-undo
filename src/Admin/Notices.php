@@ -2,12 +2,12 @@
 /**
  * One-time notices after an action.
  *
- * @package AryanX\ActivityLogWithUndo
+ * @package AryanX\Axle\ActivityLogWithUndo
  */
 
-namespace AryanX\ActivityLogWithUndo\Admin;
+namespace AryanX\Axle\ActivityLogWithUndo\Admin;
 
-use AryanX\ActivityLogWithUndo\Service;
+use AryanX\Axle\ActivityLogWithUndo\Service;
 
 defined( 'ABSPATH' ) || exit;
 

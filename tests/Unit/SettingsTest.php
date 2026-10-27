@@ -2,13 +2,13 @@
 /**
  * Tests for settings, their filters and the IP and source detection.
  *
- * @package AryanX\ActivityLogWithUndo
+ * @package AryanX\Axle\ActivityLogWithUndo
  */
 
-namespace AryanX\ActivityLogWithUndo\Tests\Unit;
+namespace AryanX\Axle\ActivityLogWithUndo\Tests\Unit;
 
-use AryanX\ActivityLogWithUndo\Context;
-use AryanX\ActivityLogWithUndo\Settings;
+use AryanX\Axle\ActivityLogWithUndo\Context;
+use AryanX\Axle\ActivityLogWithUndo\Settings;
 use Brain\Monkey\Actions;
 use Brain\Monkey\Filters;
 

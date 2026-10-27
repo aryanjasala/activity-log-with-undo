@@ -2,10 +2,10 @@
 /**
  * Before and after, side by side.
  *
- * @package AryanX\ActivityLogWithUndo
+ * @package AryanX\Axle\ActivityLogWithUndo
  */
 
-namespace AryanX\ActivityLogWithUndo\Admin;
+namespace AryanX\Axle\ActivityLogWithUndo\Admin;
 
 defined( 'ABSPATH' ) || exit;
 

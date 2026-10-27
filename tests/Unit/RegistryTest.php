@@ -2,14 +2,14 @@
 /**
  * Tests for the recorder registry and descriptions.
  *
- * @package AryanX\ActivityLogWithUndo
+ * @package AryanX\Axle\ActivityLogWithUndo
  */
 
-namespace AryanX\ActivityLogWithUndo\Tests\Unit;
+namespace AryanX\Axle\ActivityLogWithUndo\Tests\Unit;
 
-use AryanX\ActivityLogWithUndo\Entry;
-use AryanX\ActivityLogWithUndo\Recorders\Registry;
-use AryanX\ActivityLogWithUndo\Settings;
+use AryanX\Axle\ActivityLogWithUndo\Entry;
+use AryanX\Axle\ActivityLogWithUndo\Recorders\Registry;
+use AryanX\Axle\ActivityLogWithUndo\Settings;
 use Brain\Monkey\Filters;
 
 final class RegistryTest extends LogTestCase {

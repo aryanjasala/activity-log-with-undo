@@ -2,14 +2,14 @@
 /**
  * REST route the log screen uses to undo without a page load.
  *
- * @package AryanX\ActivityLogWithUndo
+ * @package AryanX\Axle\ActivityLogWithUndo
  */
 
-namespace AryanX\ActivityLogWithUndo\Rest;
+namespace AryanX\Axle\ActivityLogWithUndo\Rest;
 
-use AryanX\ActivityLogWithUndo\Admin\LogPage;
-use AryanX\ActivityLogWithUndo\Service;
-use AryanX\ActivityLogWithUndo\Undoer;
+use AryanX\Axle\ActivityLogWithUndo\Admin\LogPage;
+use AryanX\Axle\ActivityLogWithUndo\Service;
+use AryanX\Axle\ActivityLogWithUndo\Undoer;
 
 defined( 'ABSPATH' ) || exit;
 

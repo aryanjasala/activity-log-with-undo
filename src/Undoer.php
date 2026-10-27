@@ -2,12 +2,12 @@
 /**
  * Reverses logged changes.
  *
- * @package AryanX\ActivityLogWithUndo
+ * @package AryanX\Axle\ActivityLogWithUndo
  */
 
-namespace AryanX\ActivityLogWithUndo;
+namespace AryanX\Axle\ActivityLogWithUndo;
 
-use AryanX\ActivityLogWithUndo\Recorders\Registry;
+use AryanX\Axle\ActivityLogWithUndo\Recorders\Registry;
 
 defined( 'ABSPATH' ) || exit;
 

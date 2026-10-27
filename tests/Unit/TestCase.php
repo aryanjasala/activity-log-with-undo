@@ -2,10 +2,10 @@
 /**
  * Base class for unit tests.
  *
- * @package AryanX\ActivityLogWithUndo
+ * @package AryanX\Axle\ActivityLogWithUndo
  */
 
-namespace AryanX\ActivityLogWithUndo\Tests\Unit;
+namespace AryanX\Axle\ActivityLogWithUndo\Tests\Unit;
 
 use Brain\Monkey;
 use Brain\Monkey\Functions;

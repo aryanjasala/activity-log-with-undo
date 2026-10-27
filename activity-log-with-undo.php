@@ -12,17 +12,17 @@
  * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
  * Text Domain:       activity-log-with-undo
  *
- * @package AryanX\ActivityLogWithUndo
+ * @package AryanX\Axle\ActivityLogWithUndo
  */
 
-namespace AryanX\ActivityLogWithUndo;
+namespace AryanX\Axle\ActivityLogWithUndo;
 
 defined( 'ABSPATH' ) || exit;
 
 const VERSION     = '1.0.0';
 const PLUGIN_FILE = __FILE__;
 
-// PSR-4: AryanX\ActivityLogWithUndo\Foo\Bar lives in src/Foo/Bar.php.
+// PSR-4: AryanX\Axle\ActivityLogWithUndo\Foo\Bar lives in src/Foo/Bar.php.
 spl_autoload_register(
 	static function ( $class_name ) {
 		$prefix = __NAMESPACE__ . '\\';
