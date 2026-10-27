@@ -2,10 +2,10 @@
 /**
  * Works with the Category & Tag Trash plugin.
  *
- * @package AryanX\ActivityLogWithUndo
+ * @package AryanX\Axle\ActivityLogWithUndo
  */
 
-namespace AryanX\ActivityLogWithUndo\Integrations;
+namespace AryanX\Axle\ActivityLogWithUndo\Integrations;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -16,7 +16,7 @@ defined( 'ABSPATH' ) || exit;
  */
 final class CategoryTagTrash {
 
-	private const PLUGIN = 'AryanX\\CategoryTagTrash\\Plugin';
+	private const PLUGIN = 'AryanX\\Axle\\CategoryTagTrash\\Plugin';
 
 	/**
 	 * Trash items saved in this request, keyed by term ID.

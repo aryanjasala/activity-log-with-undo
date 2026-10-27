@@ -2,12 +2,12 @@
 /**
  * Personal data export, erase and privacy policy text.
  *
- * @package AryanX\ActivityLogWithUndo
+ * @package AryanX\Axle\ActivityLogWithUndo
  */
 
-namespace AryanX\ActivityLogWithUndo;
+namespace AryanX\Axle\ActivityLogWithUndo;
 
-use AryanX\ActivityLogWithUndo\Recorders\Registry;
+use AryanX\Axle\ActivityLogWithUndo\Recorders\Registry;
 
 defined( 'ABSPATH' ) || exit;
 

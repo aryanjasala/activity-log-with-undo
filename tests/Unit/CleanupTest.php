@@ -2,15 +2,15 @@
 /**
  * Tests for the clean-up of what version 1 logged, and the Site Health results about it.
  *
- * @package AryanX\ActivityLogWithUndo
+ * @package AryanX\Axle\ActivityLogWithUndo
  */
 
-namespace AryanX\ActivityLogWithUndo\Tests\Unit;
+namespace AryanX\Axle\ActivityLogWithUndo\Tests\Unit;
 
-use AryanX\ActivityLogWithUndo\Cleanup;
-use AryanX\ActivityLogWithUndo\Health\SiteHealth;
-use AryanX\ActivityLogWithUndo\Recorders\OptionsRecorder;
-use AryanX\ActivityLogWithUndo\Settings;
+use AryanX\Axle\ActivityLogWithUndo\Cleanup;
+use AryanX\Axle\ActivityLogWithUndo\Health\SiteHealth;
+use AryanX\Axle\ActivityLogWithUndo\Recorders\OptionsRecorder;
+use AryanX\Axle\ActivityLogWithUndo\Settings;
 use Brain\Monkey\Actions;
 use Brain\Monkey\Filters;
 use Brain\Monkey\Functions;

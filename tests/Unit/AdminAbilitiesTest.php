@@ -2,19 +2,19 @@
 /**
  * Tests for the screen's capability and page size filters, and the abilities.
  *
- * @package AryanX\ActivityLogWithUndo
+ * @package AryanX\Axle\ActivityLogWithUndo
  */
 
-namespace AryanX\ActivityLogWithUndo\Tests\Unit;
+namespace AryanX\Axle\ActivityLogWithUndo\Tests\Unit;
 
-use AryanX\ActivityLogWithUndo\Abilities;
-use AryanX\ActivityLogWithUndo\Admin\EntriesTable;
-use AryanX\ActivityLogWithUndo\Admin\LogPage;
-use AryanX\ActivityLogWithUndo\Recorders\PluginsRecorder;
-use AryanX\ActivityLogWithUndo\Recorders\Registry;
-use AryanX\ActivityLogWithUndo\Recorders\ThemesRecorder;
-use AryanX\ActivityLogWithUndo\Settings;
-use AryanX\ActivityLogWithUndo\Undoer;
+use AryanX\Axle\ActivityLogWithUndo\Abilities;
+use AryanX\Axle\ActivityLogWithUndo\Admin\EntriesTable;
+use AryanX\Axle\ActivityLogWithUndo\Admin\LogPage;
+use AryanX\Axle\ActivityLogWithUndo\Recorders\PluginsRecorder;
+use AryanX\Axle\ActivityLogWithUndo\Recorders\Registry;
+use AryanX\Axle\ActivityLogWithUndo\Recorders\ThemesRecorder;
+use AryanX\Axle\ActivityLogWithUndo\Settings;
+use AryanX\Axle\ActivityLogWithUndo\Undoer;
 use Brain\Monkey\Filters;
 use Brain\Monkey\Functions;
 

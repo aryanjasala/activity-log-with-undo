@@ -3,13 +3,13 @@
  * Tests for the options recorder: which options are logged, in which
  * requests, how often, how big, and how they are undone.
  *
- * @package AryanX\ActivityLogWithUndo
+ * @package AryanX\Axle\ActivityLogWithUndo
  */
 
-namespace AryanX\ActivityLogWithUndo\Tests\Unit;
+namespace AryanX\Axle\ActivityLogWithUndo\Tests\Unit;
 
-use AryanX\ActivityLogWithUndo\Payload;
-use AryanX\ActivityLogWithUndo\Recorders\OptionsRecorder;
+use AryanX\Axle\ActivityLogWithUndo\Payload;
+use AryanX\Axle\ActivityLogWithUndo\Recorders\OptionsRecorder;
 use Brain\Monkey\Actions;
 use Brain\Monkey\Filters;
 use Brain\Monkey\Functions;

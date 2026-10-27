@@ -2,18 +2,18 @@
 /**
  * `wp activity-log-with-undo` commands.
  *
- * @package AryanX\ActivityLogWithUndo
+ * @package AryanX\Axle\ActivityLogWithUndo
  */
 
-namespace AryanX\ActivityLogWithUndo\Cli;
+namespace AryanX\Axle\ActivityLogWithUndo\Cli;
 
-use AryanX\ActivityLogWithUndo\Abilities;
-use AryanX\ActivityLogWithUndo\Cleanup;
-use AryanX\ActivityLogWithUndo\Recorders\Registry;
-use AryanX\ActivityLogWithUndo\Retention;
-use AryanX\ActivityLogWithUndo\Settings;
-use AryanX\ActivityLogWithUndo\Store;
-use AryanX\ActivityLogWithUndo\Undoer;
+use AryanX\Axle\ActivityLogWithUndo\Abilities;
+use AryanX\Axle\ActivityLogWithUndo\Cleanup;
+use AryanX\Axle\ActivityLogWithUndo\Recorders\Registry;
+use AryanX\Axle\ActivityLogWithUndo\Retention;
+use AryanX\Axle\ActivityLogWithUndo\Settings;
+use AryanX\Axle\ActivityLogWithUndo\Store;
+use AryanX\Axle\ActivityLogWithUndo\Undoer;
 
 defined( 'ABSPATH' ) || exit;
 

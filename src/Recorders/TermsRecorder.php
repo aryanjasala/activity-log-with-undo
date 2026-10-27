@@ -2,14 +2,14 @@
 /**
  * Categories, tags and custom terms.
  *
- * @package AryanX\ActivityLogWithUndo
+ * @package AryanX\Axle\ActivityLogWithUndo
  */
 
-namespace AryanX\ActivityLogWithUndo\Recorders;
+namespace AryanX\Axle\ActivityLogWithUndo\Recorders;
 
-use AryanX\ActivityLogWithUndo\Entry;
-use AryanX\ActivityLogWithUndo\Integrations\CategoryTagTrash;
-use AryanX\ActivityLogWithUndo\Logger;
+use AryanX\Axle\ActivityLogWithUndo\Entry;
+use AryanX\Axle\ActivityLogWithUndo\Integrations\CategoryTagTrash;
+use AryanX\Axle\ActivityLogWithUndo\Logger;
 
 defined( 'ABSPATH' ) || exit;
 

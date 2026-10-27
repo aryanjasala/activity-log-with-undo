@@ -2,15 +2,15 @@
 /**
  * "Undo last change" in the admin bar.
  *
- * @package AryanX\ActivityLogWithUndo
+ * @package AryanX\Axle\ActivityLogWithUndo
  */
 
-namespace AryanX\ActivityLogWithUndo\Admin;
+namespace AryanX\Axle\ActivityLogWithUndo\Admin;
 
-use AryanX\ActivityLogWithUndo\Recorders\Registry;
-use AryanX\ActivityLogWithUndo\Service;
-use AryanX\ActivityLogWithUndo\Settings;
-use AryanX\ActivityLogWithUndo\Store;
+use AryanX\Axle\ActivityLogWithUndo\Recorders\Registry;
+use AryanX\Axle\ActivityLogWithUndo\Service;
+use AryanX\Axle\ActivityLogWithUndo\Settings;
+use AryanX\Axle\ActivityLogWithUndo\Store;
 
 defined( 'ABSPATH' ) || exit;
 

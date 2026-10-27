@@ -2,10 +2,10 @@
 /**
  * Deletes old entries.
  *
- * @package AryanX\ActivityLogWithUndo
+ * @package AryanX\Axle\ActivityLogWithUndo
  */
 
-namespace AryanX\ActivityLogWithUndo;
+namespace AryanX\Axle\ActivityLogWithUndo;
 
 defined( 'ABSPATH' ) || exit;
 

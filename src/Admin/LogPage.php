@@ -2,24 +2,24 @@
 /**
  * Tools > Activity Log.
  *
- * @package AryanX\ActivityLogWithUndo
+ * @package AryanX\Axle\ActivityLogWithUndo
  */
 
-namespace AryanX\ActivityLogWithUndo\Admin;
+namespace AryanX\Axle\ActivityLogWithUndo\Admin;
 
-use AryanX\ActivityLogWithUndo\Entry;
-use AryanX\ActivityLogWithUndo\Integrations\CategoryTagTrash;
-use AryanX\ActivityLogWithUndo\Logger;
-use AryanX\ActivityLogWithUndo\Payload;
-use AryanX\ActivityLogWithUndo\Recorders\OptionsRecorder;
-use AryanX\ActivityLogWithUndo\Recorders\Registry;
-use AryanX\ActivityLogWithUndo\Retention;
-use AryanX\ActivityLogWithUndo\Service;
-use AryanX\ActivityLogWithUndo\Settings;
-use AryanX\ActivityLogWithUndo\Store;
-use AryanX\ActivityLogWithUndo\Undoer;
-use const AryanX\ActivityLogWithUndo\PLUGIN_FILE;
-use const AryanX\ActivityLogWithUndo\VERSION;
+use AryanX\Axle\ActivityLogWithUndo\Entry;
+use AryanX\Axle\ActivityLogWithUndo\Integrations\CategoryTagTrash;
+use AryanX\Axle\ActivityLogWithUndo\Logger;
+use AryanX\Axle\ActivityLogWithUndo\Payload;
+use AryanX\Axle\ActivityLogWithUndo\Recorders\OptionsRecorder;
+use AryanX\Axle\ActivityLogWithUndo\Recorders\Registry;
+use AryanX\Axle\ActivityLogWithUndo\Retention;
+use AryanX\Axle\ActivityLogWithUndo\Service;
+use AryanX\Axle\ActivityLogWithUndo\Settings;
+use AryanX\Axle\ActivityLogWithUndo\Store;
+use AryanX\Axle\ActivityLogWithUndo\Undoer;
+use const AryanX\Axle\ActivityLogWithUndo\PLUGIN_FILE;
+use const AryanX\Axle\ActivityLogWithUndo\VERSION;
 
 defined( 'ABSPATH' ) || exit;
 

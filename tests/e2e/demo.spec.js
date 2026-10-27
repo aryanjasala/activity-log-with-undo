@@ -9,7 +9,7 @@ test( 'demo: change a setting and a plugin, then undo both from the log', async 
 	prepareSite( 'Kitchen Notes' );
 	wpEval( `update_option( 'blogdescription', 'Recipes from a small kitchen' );` );
 	wp( 'plugin', 'activate', 'hello' );
-	wpEval( 'AryanX\\ActivityLogWithUndo\\Plugin::instance()->store()->truncate();' );
+	wpEval( 'AryanX\\Axle\\ActivityLogWithUndo\\Plugin::instance()->store()->truncate();' );
 
 	try {
 		await recordDemo( browser, async ( page, demo ) => {
@@ -47,6 +47,6 @@ test( 'demo: change a setting and a plugin, then undo both from the log', async 
 	} finally {
 		wp( 'plugin', 'deactivate', 'hello' );
 		wpEval( `update_option( 'blogname', 'E2E' ); update_option( 'blogdescription', 'Just another site' );` );
-		wpEval( 'AryanX\\ActivityLogWithUndo\\Plugin::instance()->store()->truncate();' );
+		wpEval( 'AryanX\\Axle\\ActivityLogWithUndo\\Plugin::instance()->store()->truncate();' );
 	}
 } );

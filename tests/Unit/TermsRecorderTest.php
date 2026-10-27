@@ -2,10 +2,10 @@
 /**
  * Tests for the terms recorder, and handing deleted terms to Category & Tag Trash.
  *
- * @package AryanX\ActivityLogWithUndo
+ * @package AryanX\Axle\ActivityLogWithUndo
  */
 
-namespace AryanX\CategoryTagTrash {
+namespace AryanX\Axle\CategoryTagTrash {
 
 	/**
 	 * Stand-in for Category & Tag Trash's plugin class.
@@ -20,11 +20,11 @@ namespace AryanX\CategoryTagTrash {
 	}
 }
 
-namespace AryanX\ActivityLogWithUndo\Tests\Unit {
+namespace AryanX\Axle\ActivityLogWithUndo\Tests\Unit {
 
-	use AryanX\ActivityLogWithUndo\Integrations\CategoryTagTrash;
-	use AryanX\ActivityLogWithUndo\Recorders\TermsRecorder;
-	use AryanX\CategoryTagTrash\Plugin as TrashPlugin;
+	use AryanX\Axle\ActivityLogWithUndo\Integrations\CategoryTagTrash;
+	use AryanX\Axle\ActivityLogWithUndo\Recorders\TermsRecorder;
+	use AryanX\Axle\CategoryTagTrash\Plugin as TrashPlugin;
 	use Brain\Monkey\Filters;
 	use Brain\Monkey\Functions;
 
@@ -119,9 +119,9 @@ namespace AryanX\ActivityLogWithUndo\Tests\Unit {
 			$snapshot = $this->state( 1, 'before' );
 			$this->assertSame( 77, $snapshot['ctt_item'] );
 			$this->assertArrayNotHasKey( 'objects', $snapshot );
-			$this->assertStringContainsString( 'Category & Tag Trash', $recorder->describe( \AryanX\ActivityLogWithUndo\Entry::from_row( $this->rows[1] ) ) );
+			$this->assertStringContainsString( 'Category & Tag Trash', $recorder->describe( \AryanX\Axle\ActivityLogWithUndo\Entry::from_row( $this->rows[1] ) ) );
 
-			$this->assertTrue( $recorder->undo( \AryanX\ActivityLogWithUndo\Entry::from_row( $this->rows[1] ) ) );
+			$this->assertTrue( $recorder->undo( \AryanX\Axle\ActivityLogWithUndo\Entry::from_row( $this->rows[1] ) ) );
 			$this->assertSame( array( array( 77, true ) ), $restorer->calls );
 		}
 

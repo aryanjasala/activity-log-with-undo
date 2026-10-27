@@ -25,12 +25,12 @@
   },
   "autoload": {
     "psr-4": {
-      "AryanX\\ActivityLogWithUndo\\": "src/"
+      "AryanX\\Axle\\ActivityLogWithUndo\\": "src/"
     }
   },
   "autoload-dev": {
     "psr-4": {
-      "AryanX\\ActivityLogWithUndo\\Tests\\": "tests/"
+      "AryanX\\Axle\\ActivityLogWithUndo\\Tests\\": "tests/"
     }
   },
   "config": {

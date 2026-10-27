@@ -2,28 +2,28 @@
 /**
  * Plugin bootstrap.
  *
- * @package AryanX\ActivityLogWithUndo
+ * @package AryanX\Axle\ActivityLogWithUndo
  */
 
-namespace AryanX\ActivityLogWithUndo;
+namespace AryanX\Axle\ActivityLogWithUndo;
 
-use AryanX\ActivityLogWithUndo\Admin\AdminBar;
-use AryanX\ActivityLogWithUndo\Admin\LogPage;
-use AryanX\ActivityLogWithUndo\Admin\Notices;
-use AryanX\ActivityLogWithUndo\Cli\Command;
-use AryanX\ActivityLogWithUndo\Health\SiteHealth;
-use AryanX\ActivityLogWithUndo\Integrations\CategoryTagTrash;
-use AryanX\ActivityLogWithUndo\Recorders\MenusRecorder;
-use AryanX\ActivityLogWithUndo\Recorders\NetworkRecorder;
-use AryanX\ActivityLogWithUndo\Recorders\OptionsRecorder;
-use AryanX\ActivityLogWithUndo\Recorders\PluginsRecorder;
-use AryanX\ActivityLogWithUndo\Recorders\PostsRecorder;
-use AryanX\ActivityLogWithUndo\Recorders\Registry;
-use AryanX\ActivityLogWithUndo\Recorders\SiteEditorRecorder;
-use AryanX\ActivityLogWithUndo\Recorders\TermsRecorder;
-use AryanX\ActivityLogWithUndo\Recorders\ThemesRecorder;
-use AryanX\ActivityLogWithUndo\Recorders\UsersRecorder;
-use AryanX\ActivityLogWithUndo\Rest\UndoController;
+use AryanX\Axle\ActivityLogWithUndo\Admin\AdminBar;
+use AryanX\Axle\ActivityLogWithUndo\Admin\LogPage;
+use AryanX\Axle\ActivityLogWithUndo\Admin\Notices;
+use AryanX\Axle\ActivityLogWithUndo\Cli\Command;
+use AryanX\Axle\ActivityLogWithUndo\Health\SiteHealth;
+use AryanX\Axle\ActivityLogWithUndo\Integrations\CategoryTagTrash;
+use AryanX\Axle\ActivityLogWithUndo\Recorders\MenusRecorder;
+use AryanX\Axle\ActivityLogWithUndo\Recorders\NetworkRecorder;
+use AryanX\Axle\ActivityLogWithUndo\Recorders\OptionsRecorder;
+use AryanX\Axle\ActivityLogWithUndo\Recorders\PluginsRecorder;
+use AryanX\Axle\ActivityLogWithUndo\Recorders\PostsRecorder;
+use AryanX\Axle\ActivityLogWithUndo\Recorders\Registry;
+use AryanX\Axle\ActivityLogWithUndo\Recorders\SiteEditorRecorder;
+use AryanX\Axle\ActivityLogWithUndo\Recorders\TermsRecorder;
+use AryanX\Axle\ActivityLogWithUndo\Recorders\ThemesRecorder;
+use AryanX\Axle\ActivityLogWithUndo\Recorders\UsersRecorder;
+use AryanX\Axle\ActivityLogWithUndo\Rest\UndoController;
 
 defined( 'ABSPATH' ) || exit;
 

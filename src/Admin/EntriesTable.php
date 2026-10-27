@@ -2,16 +2,16 @@
 /**
  * The list of logged changes.
  *
- * @package AryanX\ActivityLogWithUndo
+ * @package AryanX\Axle\ActivityLogWithUndo
  */
 
-namespace AryanX\ActivityLogWithUndo\Admin;
+namespace AryanX\Axle\ActivityLogWithUndo\Admin;
 
-use AryanX\ActivityLogWithUndo\Context;
-use AryanX\ActivityLogWithUndo\Entry;
-use AryanX\ActivityLogWithUndo\Recorders\Registry;
-use AryanX\ActivityLogWithUndo\Store;
-use AryanX\ActivityLogWithUndo\Undoer;
+use AryanX\Axle\ActivityLogWithUndo\Context;
+use AryanX\Axle\ActivityLogWithUndo\Entry;
+use AryanX\Axle\ActivityLogWithUndo\Recorders\Registry;
+use AryanX\Axle\ActivityLogWithUndo\Store;
+use AryanX\Axle\ActivityLogWithUndo\Undoer;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -104,8 +104,8 @@ final class EntriesTable extends \WP_List_Table {
 			'event'      => sanitize_key( self::filter( 'alu_event' ) ),
 			'via'        => in_array( self::filter( 'alu_via' ), Context::VIAS, true ) ? self::filter( 'alu_via' ) : '',
 			'user'       => '' === $user ? '' : (int) $user,
-			'since'      => \AryanX\ActivityLogWithUndo\Abilities::date( self::filter( 'alu_from' ) ),
-			'until'      => \AryanX\ActivityLogWithUndo\Abilities::date( self::filter( 'alu_to' ), true ),
+			'since'      => \AryanX\Axle\ActivityLogWithUndo\Abilities::date( self::filter( 'alu_from' ) ),
+			'until'      => \AryanX\Axle\ActivityLogWithUndo\Abilities::date( self::filter( 'alu_to' ), true ),
 			'object'     => self::filter( 'alu_object' ),
 			'change_set' => preg_match( '/^[a-f0-9]{32}$/', self::filter( 'alu_set' ) ) ? self::filter( 'alu_set' ) : '',
 			'search'     => self::filter( 's' ),

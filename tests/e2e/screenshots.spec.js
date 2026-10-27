@@ -28,7 +28,7 @@ test.describe.serial( 'Screenshots', () => {
 		made.posts.push( wp( 'post', 'create', '--post_title=Spring menu', '--post_status=publish', '--porcelain' ) );
 		made.terms.push( wp( 'term', 'create', 'category', 'Desserts', '--porcelain' ) );
 		wp( 'plugin', 'activate', 'hello' );
-		wpEval( 'AryanX\\ActivityLogWithUndo\\Plugin::instance()->store()->truncate();' );
+		wpEval( 'AryanX\\Axle\\ActivityLogWithUndo\\Plugin::instance()->store()->truncate();' );
 
 		// A morning of changes, from the dashboard, the editor and WP-CLI.
 		const context = await browser.newContext( { baseURL: BASE_URL, storageState: STORAGE_STATE } );
@@ -57,7 +57,7 @@ test.describe.serial( 'Screenshots', () => {
 		made.users.forEach( ( id ) => wp( 'user', 'delete', id, '--yes', '--reassign=1' ) );
 		made.terms.forEach( ( id ) => wp( 'term', 'delete', 'category', id ) );
 		wpEval( `update_option( 'blogname', 'E2E' ); update_option( 'blogdescription', 'Just another site' );` );
-		wpEval( 'AryanX\\ActivityLogWithUndo\\Plugin::instance()->store()->truncate();' );
+		wpEval( 'AryanX\\Axle\\ActivityLogWithUndo\\Plugin::instance()->store()->truncate();' );
 	} );
 
 	test( '1: the log', async ( { page } ) => {

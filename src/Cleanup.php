@@ -2,14 +2,14 @@
 /**
  * Clears out what version 1 logged that nobody can act on.
  *
- * @package AryanX\ActivityLogWithUndo
+ * @package AryanX\Axle\ActivityLogWithUndo
  */
 
-namespace AryanX\ActivityLogWithUndo;
+namespace AryanX\Axle\ActivityLogWithUndo;
 
-use AryanX\ActivityLogWithUndo\Admin\LogPage;
-use AryanX\ActivityLogWithUndo\Admin\Notices;
-use AryanX\ActivityLogWithUndo\Recorders\OptionsRecorder;
+use AryanX\Axle\ActivityLogWithUndo\Admin\LogPage;
+use AryanX\Axle\ActivityLogWithUndo\Admin\Notices;
+use AryanX\Axle\ActivityLogWithUndo\Recorders\OptionsRecorder;
 
 defined( 'ABSPATH' ) || exit;
 

@@ -2,12 +2,12 @@
 /**
  * Tests for the users recorder.
  *
- * @package AryanX\ActivityLogWithUndo
+ * @package AryanX\Axle\ActivityLogWithUndo
  */
 
-namespace AryanX\ActivityLogWithUndo\Tests\Unit;
+namespace AryanX\Axle\ActivityLogWithUndo\Tests\Unit;
 
-use AryanX\ActivityLogWithUndo\Recorders\UsersRecorder;
+use AryanX\Axle\ActivityLogWithUndo\Recorders\UsersRecorder;
 use Brain\Monkey\Functions;
 
 final class UsersRecorderTest extends LogTestCase {

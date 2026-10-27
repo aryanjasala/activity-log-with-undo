@@ -2,13 +2,13 @@
 /**
  * Classic navigation menus.
  *
- * @package AryanX\ActivityLogWithUndo
+ * @package AryanX\Axle\ActivityLogWithUndo
  */
 
-namespace AryanX\ActivityLogWithUndo\Recorders;
+namespace AryanX\Axle\ActivityLogWithUndo\Recorders;
 
-use AryanX\ActivityLogWithUndo\Entry;
-use AryanX\ActivityLogWithUndo\Payload;
+use AryanX\Axle\ActivityLogWithUndo\Entry;
+use AryanX\Axle\ActivityLogWithUndo\Payload;
 
 defined( 'ABSPATH' ) || exit;
 
