@@ -70,7 +70,7 @@ final class OptionsRecorderTest extends LogTestCase {
 		}
 
 		// Other plugins' state and caches, and what WordPress rewrites on its own.
-		foreach ( array( 'block_doctor_index', 'block_doctor_scan', 'aryanx_content_version', 'site_read_only_mode_state', 'role_right_sizer_report', 'woocommerce_queue_flush_rewrite_rules', 'woocommerce_currency', '_transient_feed_x', '_site_transient_update_core', 'cron', 'rewrite_rules', 'core_updater.lock', 'auth_key', 'category_children', 'active_plugins', 'activity_log_with_undo_settings' ) as $option ) {
+		foreach ( array( 'block_doctor_index', 'block_doctor_scan', 'aryanx_content_version', 'axle_read_only_mode_state', 'role_right_sizer_report', 'woocommerce_queue_flush_rewrite_rules', 'woocommerce_currency', '_transient_feed_x', '_site_transient_update_core', 'cron', 'rewrite_rules', 'core_updater.lock', 'auth_key', 'category_children', 'active_plugins', 'activity_log_with_undo_settings' ) as $option ) {
 			$this->assertFalse( $recorder->is_logged( $option ), $option );
 		}
 	}
