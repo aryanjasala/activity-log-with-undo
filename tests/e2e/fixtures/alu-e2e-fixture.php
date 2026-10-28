@@ -51,7 +51,7 @@ add_action(
 	20
 );
 
-// Another plugin that refuses writes, the way Site Read-Only Mode does during a freeze.
+// Another plugin that refuses writes, the way Axle Read-Only Mode does during a freeze.
 add_filter(
 	'rest_pre_dispatch',
 	static function ( $result, $server, $request ) {
