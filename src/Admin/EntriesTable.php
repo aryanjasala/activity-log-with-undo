@@ -281,9 +281,9 @@ final class EntriesTable extends \WP_List_Table {
 		$agent = LogPage::agent_line( $item );
 
 		return sprintf(
-			'%1$s<br><span class="alu-via alu-via-%2$s">%3$s</span>%4$s',
+			'%1$s<br><span class="axle-badge axle-badge--%2$s alu-via">%3$s</span>%4$s',
 			esc_html( $item->actor_name() ),
-			esc_attr( $item->actor_via ),
+			esc_attr( LogPage::via_tone( $item->actor_via ) ),
 			esc_html( LogPage::via_label( $item->actor_via ) ),
 			'' !== $agent ? '<div class="alu-meta alu-agent">' . esc_html( $agent ) . '</div>' : ''
 		);
@@ -316,14 +316,14 @@ final class EntriesTable extends \WP_List_Table {
 	protected function column_undo( $item ): string {
 		if ( $item->is_undone() ) {
 			return sprintf(
-				'<a class="alu-status alu-status-undone" href="%1$s">%2$s</a>',
+				'<a class="alu-status" href="%1$s"><span class="axle-badge axle-badge--neutral">%2$s</span></a>',
 				esc_url( LogPage::url( array( 'entry' => (int) $item->undone_by ) ) ),
 				/* translators: %d: entry number. */
 				esc_html( sprintf( __( 'Undone (#%d)', 'activity-log-with-undo' ), (int) $item->undone_by ) )
 			);
 		}
 		if ( ! $item->undoable ) {
-			return '<span class="alu-status alu-muted">' . esc_html__( 'Logged only', 'activity-log-with-undo' ) . '</span>';
+			return '<span class="alu-status axle-badge axle-badge--neutral">' . esc_html__( 'Logged only', 'activity-log-with-undo' ) . '</span>';
 		}
 
 		return LogPage::undo_link( $item, $this->also( $item ), false );
