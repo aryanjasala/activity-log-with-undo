@@ -622,7 +622,9 @@ test.describe( 'Activity Log with Undo', () => {
 		expect( await link.evaluate( ( element ) => getComputedStyle( element ).textDecorationLine ) ).toBe( 'underline' );
 		const loggedOnly = page.locator( '#the-list tr', { hasText: 'Deleted the user axe' } ).first();
 		await expect( loggedOnly.locator( '.check-column .screen-reader-text' ) ).toContainText( 'cannot be selected for undo' );
-		expect( await loggedOnly.locator( '.alu-muted' ).evaluate( ( element ) => getComputedStyle( element ).color ) ).toBe( 'rgb(100, 105, 112)' );
+		const badge = loggedOnly.locator( '.alu-status.axle-badge' );
+		await expect( badge ).toHaveText( 'Logged only' );
+		expect( await badge.evaluate( ( element ) => getComputedStyle( element ).color ) ).toBe( 'rgb(80, 87, 94)' );
 		wp( 'option', 'update', 'blogname', 'E2E' );
 		wp( 'option', 'update', 'blogdescription', 'Just another site' );
 	} );
