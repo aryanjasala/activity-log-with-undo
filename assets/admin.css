@@ -142,3 +142,8 @@
 		width: 100%;
 	}
 }
+
+/* The shared danger button text (#d63638) is 4.4:1 on core's grey button, under the 4.5:1 AA bar. Use the darker error text until axle-ui.css does. */
+.alu-page .button.axle-button--danger {
+	color: var(--axle-error-text);
+}
