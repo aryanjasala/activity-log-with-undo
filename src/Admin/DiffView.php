@@ -59,7 +59,7 @@ final class DiffView {
 
 			if ( is_string( $old ) && is_string( $new ) && ( strlen( $old ) > self::LONG || strlen( $new ) > self::LONG || false !== strpos( $old . $new, "\n" ) ) ) {
 				$diff   = self::text( $old, $new, $left_title, $right_title );
-				$texts .= sprintf( '<h4 class="alu-diff-field">%s</h4>', self::field( (string) $key ) ) . ( null === $diff ? '<p class="alu-muted">' . esc_html__( 'No difference.', 'activity-log-with-undo' ) . '</p>' : $diff );
+				$texts .= sprintf( '<h4 class="alu-diff-field">%s</h4>', self::field( (string) $key ) ) . ( null === $diff ? '<p class="axle-muted">' . esc_html__( 'No difference.', 'activity-log-with-undo' ) . '</p>' : $diff );
 				continue;
 			}
 
@@ -207,7 +207,7 @@ final class DiffView {
 	 */
 	private static function value( $value, string $key = '' ): string {
 		if ( null === $value || '' === $value ) {
-			return '<span class="alu-muted">' . esc_html__( '(none)', 'activity-log-with-undo' ) . '</span>';
+			return '<span class="axle-muted">' . esc_html__( '(none)', 'activity-log-with-undo' ) . '</span>';
 		}
 		if ( is_bool( $value ) ) {
 			return $value ? esc_html__( 'yes', 'activity-log-with-undo' ) : esc_html__( 'no', 'activity-log-with-undo' );

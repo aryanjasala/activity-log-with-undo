@@ -1,17 +1,9 @@
-.alu-page .alu-intro {
-	max-width: 760px;
-	color: #50575e;
-}
+/* Layout only. Components, tones and colours come from axle-ui.css. */
 
 .alu-page .alu-meta {
 	margin-top: 2px;
-	color: #646970;
+	color: var(--axle-muted);
 	font-size: 12px;
-}
-
-.alu-page .alu-muted {
-	/* 5.2:1 on the yellow of a changed row, 5.5:1 on white. */
-	color: #646970;
 }
 
 /* Links inside running text are underlined, not told apart by colour alone. */
@@ -21,31 +13,12 @@
 }
 
 .alu-page .alu-via {
-	display: inline-block;
 	margin-top: 2px;
-	padding: 0 6px;
-	border-radius: 3px;
-	background: #f0f0f1;
-	color: #50575e;
-	font-size: 11px;
-	line-height: 18px;
 }
 
-.alu-page .alu-via-cli,
-.alu-page .alu-via-cron {
-	background: #fcf0e3;
-	color: #8a4d00;
-}
-
-.alu-page .alu-via-ability,
-.alu-page .alu-via-app-password {
-	background: #f3eefc;
-	color: #5b2fa8;
-}
-
-.alu-page .alu-via-rest {
-	background: #e9f2fb;
-	color: #135e96;
+.alu-page .alu-status {
+	display: inline-block;
+	text-decoration: none;
 }
 
 .alu-page .column-undo {
@@ -58,10 +31,6 @@
 
 .alu-page .column-when {
 	width: 120px;
-}
-
-.alu-page .alu-status-undone {
-	color: #646970;
 }
 
 .alu-page .alu-filters select,
@@ -86,15 +55,6 @@
 	line-height: 30px;
 }
 
-.alu-page .alu-facts th {
-	width: 140px;
-	padding: 8px 10px 8px 0;
-}
-
-.alu-page .alu-facts td {
-	padding: 8px 10px;
-}
-
 .alu-page .alu-set {
 	margin: 0;
 }
@@ -114,7 +74,7 @@
 }
 
 .alu-page .alu-diff-table tr.alu-changed td {
-	background: #fcf9e8;
+	background: var(--axle-warning-bg);
 }
 
 .alu-page .alu-json {
@@ -127,14 +87,8 @@
 	text-align: left;
 }
 
-.alu-page .alu-tech {
-	max-width: 1100px;
-	margin: 24px 0 8px;
-}
-
 .alu-page .alu-tech summary {
 	cursor: pointer;
-	color: #50575e;
 }
 
 .alu-page .alu-tech-table {
@@ -169,7 +123,7 @@
 }
 
 .alu-page .alu-actions {
-	margin: 16px 0;
+	margin: 16px 0 0;
 }
 
 .alu-page .alu-undo.is-busy {
@@ -181,16 +135,15 @@
 	max-width: 1100px;
 }
 
-.alu-page .alu-purge {
-	margin-top: 32px;
-	padding-top: 8px;
-	border-top: 1px solid #dcdcde;
-}
-
 @media screen and (max-width: 782px) {
 	.alu-page .alu-filters input[type="date"],
 	.alu-page .alu-filters .alu-object {
 		max-width: 100%;
 		width: 100%;
 	}
+}
+
+/* The shared danger button text (#d63638) is 4.4:1 on core's grey button, under the 4.5:1 AA bar. Use the darker error text until axle-ui.css does. */
+.alu-page .button.axle-button--danger {
+	color: var(--axle-error-text);
 }
