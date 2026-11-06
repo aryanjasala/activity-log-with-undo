@@ -149,10 +149,11 @@ final class LogPage implements Service {
 	 *
 	 * @param Entry    $entry Entry.
 	 * @param string[] $also  Descriptions of the other changes undone with it.
-	 * @param bool     $force Undo even when things changed since.
+	 * @param bool     $force   Undo even when things changed since.
+	 * @param bool     $primary Whether this is the one main action of the screen.
 	 * @return string HTML.
 	 */
-	public static function undo_link( Entry $entry, array $also, bool $force ): string {
+	public static function undo_link( Entry $entry, array $also, bool $force, bool $primary = false ): string {
 		$redo  = null !== $entry->undo_of;
 		$also  = array_values( array_map( 'strval', $also ) );
 		$count = 1 + count( $also );
@@ -199,7 +200,7 @@ final class LogPage implements Service {
 		return sprintf(
 			'<a href="%1$s" class="button %2$s alu-undo" data-alu-entry="%3$d" data-alu-force="%4$d" data-alu-count="%5$d" data-alu-redo="%6$d" data-alu-deletes-user="%7$d" data-alu-also="%8$s" data-alu-confirm="%9$s">%10$s</a>',
 			esc_url( self::undo_url( $entry->id, $force ) ),
-			$force ? 'button-primary alu-undo-anyway' : ( $redo ? 'alu-redo' : 'button-secondary' ),
+			$force ? 'axle-button--danger alu-undo-anyway' : ( $primary ? 'button-primary' : '' ) . ( $redo ? ' alu-redo' : '' ),
 			$entry->id,
 			$force ? 1 : 0,
 			$count,
@@ -290,6 +291,16 @@ final class LogPage implements Service {
 	}
 
 	/**
+	 * Badge tone for a source: neutral for people at a screen, info for the rest.
+	 *
+	 * @param string $via Source.
+	 * @return string
+	 */
+	public static function via_tone( string $via ): string {
+		return in_array( $via, array( 'admin', 'xmlrpc' ), true ) ? 'neutral' : 'info';
+	}
+
+	/**
 	 * Name of a source for people.
 	 *
 	 * @param string $via Source.
@@ -331,7 +342,8 @@ final class LogPage implements Service {
 	 * Styles and the undo script.
 	 */
 	public function enqueue_assets(): void {
-		wp_enqueue_style( 'activity-log-with-undo-admin', plugins_url( 'assets/admin.css', PLUGIN_FILE ), array(), VERSION );
+		AxleUi::enqueue();
+		wp_enqueue_style( 'activity-log-with-undo-admin', plugins_url( 'assets/admin.css', PLUGIN_FILE ), array( AxleUi::HANDLE ), VERSION );
 		wp_enqueue_script( 'activity-log-with-undo-admin', plugins_url( 'assets/admin.js', PLUGIN_FILE ), array( 'wp-hooks', 'wp-api-fetch' ), VERSION, true );
 		wp_localize_script( 'activity-log-with-undo-admin', 'activityLogWithUndo', array( 'notUndone' => __( 'The change was not undone.', 'activity-log-with-undo' ) ) );
 	}
@@ -494,15 +506,14 @@ final class LogPage implements Service {
 		$tab      = isset( $_GET['tab'] ) ? sanitize_key( wp_unslash( $_GET['tab'] ) ) : 'log';
 		// phpcs:enable
 		?>
-		<div class="wrap alu-page">
+		<div class="wrap axle-ui alu-page">
 			<h1 class="wp-heading-inline"><?php esc_html_e( 'Activity Log', 'activity-log-with-undo' ); ?></h1>
 			<hr class="wp-header-end">
-			<p class="alu-intro"><?php esc_html_e( 'Every change to settings, plugins, themes, users, content, terms, menus and the Site Editor, with what it was before. Undo puts it back.', 'activity-log-with-undo' ); ?></p>
-
-			<nav class="nav-tab-wrapper">
+				<nav class="nav-tab-wrapper">
 				<a href="<?php echo esc_url( self::url() ); ?>" class="nav-tab <?php echo 'settings' !== $tab ? 'nav-tab-active' : ''; ?>"<?php echo 'settings' !== $tab ? ' aria-current="page"' : ''; ?>><?php esc_html_e( 'Log', 'activity-log-with-undo' ); ?></a>
 				<a href="<?php echo esc_url( self::url( array( 'tab' => 'settings' ) ) ); ?>" class="nav-tab <?php echo 'settings' === $tab ? 'nav-tab-active' : ''; ?>"<?php echo 'settings' === $tab ? ' aria-current="page"' : ''; ?>><?php esc_html_e( 'Settings', 'activity-log-with-undo' ); ?></a>
 			</nav>
+		<p class="axle-intro"><?php esc_html_e( 'Every change to settings, plugins, themes, users, content, terms, menus and the Site Editor, with what it was before. Undo puts it back.', 'activity-log-with-undo' ); ?></p>
 
 			<?php
 			Notices::render();
@@ -514,6 +525,7 @@ final class LogPage implements Service {
 			} else {
 				$this->render_log();
 			}
+			AxleUi::footer();
 			?>
 		</div>
 		<?php
@@ -530,10 +542,10 @@ final class LogPage implements Service {
 		$set = EntriesTable::filter( 'alu_set' );
 		?>
 		<?php if ( '' !== $set ) : ?>
-			<p class="alu-set-note">
+			<div class="notice notice-info inline alu-set-note"><p>
 				<?php esc_html_e( 'Showing the changes saved together in one request. Undo on any of them undoes them all.', 'activity-log-with-undo' ); ?>
 				<a href="<?php echo esc_url( self::url() ); ?>"><?php esc_html_e( 'Show everything', 'activity-log-with-undo' ); ?></a>
-			</p>
+			</p></div>
 		<?php endif; ?>
 		<form method="get" class="alu-log">
 			<input type="hidden" name="page" value="<?php echo esc_attr( self::SLUG ); ?>">
@@ -579,35 +591,33 @@ final class LogPage implements Service {
 		$type    = self::object_type_label( $entry->object_type );
 		?>
 		<div class="alu-entry" data-alu-entry="<?php echo esc_attr( (string) $entry->id ); ?>">
-			<h2><?php echo esc_html( $this->registry->describe( $entry ) ); ?></h2>
-			<table class="form-table alu-facts" role="presentation">
-				<tr><th scope="row"><?php esc_html_e( 'When', 'activity-log-with-undo' ); ?></th><td><?php echo esc_html( wp_date( $format, $entry->timestamp() ) ); ?></td></tr>
-				<tr><th scope="row"><?php esc_html_e( 'Who', 'activity-log-with-undo' ); ?></th><td><?php echo esc_html( $entry->actor_name() ); ?> <span class="alu-via alu-via-<?php echo esc_attr( $entry->actor_via ); ?>"><?php echo esc_html( self::via_label( $entry->actor_via ) ); ?></span></td></tr>
+			<section class="axle-card">
+			<h2 class="axle-card__title"><?php echo esc_html( $this->registry->describe( $entry ) ); ?></h2>
+			<dl class="axle-facts alu-facts">
+				<dt><?php esc_html_e( 'When', 'activity-log-with-undo' ); ?></dt><dd><?php echo esc_html( wp_date( $format, $entry->timestamp() ) ); ?></dd>
+				<dt><?php esc_html_e( 'Who', 'activity-log-with-undo' ); ?></dt><dd><?php echo esc_html( $entry->actor_name() ); ?> <span class="axle-badge axle-badge--<?php echo esc_attr( self::via_tone( $entry->actor_via ) ); ?> alu-via"><?php echo esc_html( self::via_label( $entry->actor_via ) ); ?></span></dd>
 				<?php if ( '' !== $agent ) : ?>
-					<tr class="alu-agent"><th scope="row"><?php esc_html_e( 'AI agent', 'activity-log-with-undo' ); ?></th><td><?php echo esc_html( $agent ); ?></td></tr>
+					<dt><?php esc_html_e( 'AI agent', 'activity-log-with-undo' ); ?></dt><dd class="alu-agent"><?php echo esc_html( $agent ); ?></dd>
 				<?php endif; ?>
 				<?php if ( '' !== $entry->ip ) : ?>
-					<tr><th scope="row"><?php esc_html_e( 'IP address', 'activity-log-with-undo' ); ?></th><td><span dir="ltr"><?php echo esc_html( $entry->ip ); ?></span></td></tr>
+					<dt><?php esc_html_e( 'IP address', 'activity-log-with-undo' ); ?></dt><dd><span dir="ltr"><?php echo esc_html( $entry->ip ); ?></span></dd>
 				<?php endif; ?>
-				<tr><th scope="row"><?php esc_html_e( 'What happened', 'activity-log-with-undo' ); ?></th><td><?php echo esc_html( $events[ $entry->event ] ?? $entry->event ); ?></td></tr>
-				<tr><th scope="row"><?php esc_html_e( 'What changed', 'activity-log-with-undo' ); ?></th><td><?php echo esc_html( $type . ': ' . self::object_name( $entry ) ); ?></td></tr>
+				<dt><?php esc_html_e( 'What happened', 'activity-log-with-undo' ); ?></dt><dd><?php echo esc_html( $events[ $entry->event ] ?? $entry->event ); ?></dd>
+				<dt><?php esc_html_e( 'What changed', 'activity-log-with-undo' ); ?></dt><dd><?php echo esc_html( $type . ': ' . self::object_name( $entry ) ); ?></dd>
 				<?php if ( $others ) : ?>
-					<tr>
-						<th scope="row"><?php esc_html_e( 'Undone together with', 'activity-log-with-undo' ); ?></th>
-						<td>
+					<dt><?php esc_html_e( 'Undone together with', 'activity-log-with-undo' ); ?></dt>
+						<dd>
 							<ul class="alu-set">
 								<?php foreach ( $others as $other ) : ?>
 									<li><a href="<?php echo esc_url( self::url( array( 'entry' => $other->id ) ) ); ?>">#<?php echo esc_html( (string) $other->id ); ?></a> <?php echo esc_html( $this->registry->describe( $other ) ); ?></li>
 								<?php endforeach; ?>
 							</ul>
 							<p class="description"><?php esc_html_e( 'These were saved in the same request, so Undo puts all of them back together.', 'activity-log-with-undo' ); ?></p>
-						</td>
-					</tr>
+						</dd>
 				<?php endif; ?>
 				<?php if ( $left > 0 ) : ?>
-					<tr>
-						<th scope="row"><?php esc_html_e( 'Saved with', 'activity-log-with-undo' ); ?></th>
-						<td>
+					<dt><?php esc_html_e( 'Saved with', 'activity-log-with-undo' ); ?></dt>
+						<dd>
 							<a href="<?php echo esc_url( add_query_arg( 'alu_set', $entry->change_set, self::url() ) ); ?>">
 								<?php
 								/* translators: %d: number of changes. */
@@ -615,26 +625,27 @@ final class LogPage implements Service {
 								?>
 							</a>
 							<p class="description"><?php esc_html_e( 'Undo leaves these alone: they cannot be undone, were undone already, or are not settings.', 'activity-log-with-undo' ); ?></p>
-						</td>
-					</tr>
+						</dd>
 				<?php endif; ?>
 				<?php if ( $entry->undo_of ) : ?>
-					<tr><th scope="row"><?php esc_html_e( 'Undo of', 'activity-log-with-undo' ); ?></th><td><a href="<?php echo esc_url( self::url( array( 'entry' => $entry->undo_of ) ) ); ?>">#<?php echo esc_html( (string) $entry->undo_of ); ?></a></td></tr>
+					<dt><?php esc_html_e( 'Undo of', 'activity-log-with-undo' ); ?></dt><dd><a href="<?php echo esc_url( self::url( array( 'entry' => $entry->undo_of ) ) ); ?>">#<?php echo esc_html( (string) $entry->undo_of ); ?></a></dd>
 				<?php endif; ?>
 				<?php if ( $entry->is_undone() ) : ?>
-					<tr><th scope="row"><?php esc_html_e( 'Undone by', 'activity-log-with-undo' ); ?></th><td><a href="<?php echo esc_url( self::url( array( 'entry' => (int) $entry->undone_by ) ) ); ?>">#<?php echo esc_html( (string) $entry->undone_by ); ?></a></td></tr>
+					<dt><?php esc_html_e( 'Undone by', 'activity-log-with-undo' ); ?></dt><dd><a href="<?php echo esc_url( self::url( array( 'entry' => (int) $entry->undone_by ) ) ); ?>">#<?php echo esc_html( (string) $entry->undone_by ); ?></a></dd>
 				<?php endif; ?>
 				<?php if ( 'term_deleted' === $entry->event && ! empty( ( (array) $entry->before() )['ctt_item'] ) ) : ?>
-					<tr><th scope="row"><?php esc_html_e( 'Kept in', 'activity-log-with-undo' ); ?></th><td><a href="<?php echo esc_url( CategoryTagTrash::url() ); ?>"><?php esc_html_e( 'Category & Tag Trash', 'activity-log-with-undo' ); ?></a></td></tr>
+					<dt><?php esc_html_e( 'Kept in', 'activity-log-with-undo' ); ?></dt><dd><a href="<?php echo esc_url( CategoryTagTrash::url() ); ?>"><?php esc_html_e( 'Category & Tag Trash', 'activity-log-with-undo' ); ?></a></dd>
 				<?php endif; ?>
-			</table>
+			</dl>
+			</section>
 
-			<h3><?php esc_html_e( 'Before and after', 'activity-log-with-undo' ); ?></h3>
-			<?php $this->render_states( $entry ); ?>
-
+			<section class="axle-card">
+				<h2 class="axle-card__title"><?php esc_html_e( 'Before and after', 'activity-log-with-undo' ); ?></h2>
+				<?php $this->render_states( $entry ); ?>
+			</section>
 			<?php $this->render_undo( $entry, $check ); ?>
 
-			<details class="alu-tech">
+			<section class="axle-card"><details class="alu-tech">
 				<summary><?php esc_html_e( 'Technical details', 'activity-log-with-undo' ); ?></summary>
 				<table class="widefat striped alu-tech-table">
 					<tbody>
@@ -649,7 +660,7 @@ final class LogPage implements Service {
 						<?php endif; ?>
 					</tbody>
 				</table>
-			</details>
+			</details></section>
 		</div>
 		<?php
 	}
@@ -703,10 +714,11 @@ final class LogPage implements Service {
 		}
 
 		if ( ! $check['conflicts'] ) {
-			echo '<p class="alu-actions">' . self::undo_link( $entry, $also, false ) . '</p>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Escaped in undo_link().
+			echo '<p class="alu-actions">' . self::undo_link( $entry, $also, false, true ) . '</p>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Escaped in undo_link().
 			return;
 		}
 
+		echo '<section class="axle-card axle-card--danger"><h3 class="axle-card__title">' . esc_html__( 'Undo would overwrite later changes', 'activity-log-with-undo' ) . '</h3>';
 		echo '<div class="notice notice-warning inline alu-conflict"><p><strong>' . esc_html__( 'Changed since', 'activity-log-with-undo' ) . '</strong> ' . esc_html__( 'This was changed again after this entry. Undo would overwrite these later changes:', 'activity-log-with-undo' ) . '</p></div>';
 		foreach ( $check['conflicts'] as $conflict ) {
 			$other = (int) $conflict['id'] === $entry->id ? $entry : $this->store->get( (int) $conflict['id'] );
@@ -715,7 +727,7 @@ final class LogPage implements Service {
 			}
 			echo wp_kses_post( DiffView::compare( $conflict['expected'], $conflict['current'], __( 'Right after this change', 'activity-log-with-undo' ), __( 'Now', 'activity-log-with-undo' ) ) );
 		}
-		echo '<p class="alu-actions">' . self::undo_link( $entry, $also, true ) . '</p>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Escaped in undo_link().
+		echo '<p class="alu-actions">' . self::undo_link( $entry, $also, true ) . '</p></section>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Escaped in undo_link().
 	}
 
 	/**
@@ -724,6 +736,7 @@ final class LogPage implements Service {
 	private function render_settings(): void {
 		$settings = $this->settings->all();
 		?>
+		<section class="axle-card">
 		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="alu-settings">
 			<?php wp_nonce_field( self::SETTINGS_SAVE ); ?>
 			<input type="hidden" name="action" value="<?php echo esc_attr( self::SETTINGS_SAVE ); ?>">
@@ -772,12 +785,14 @@ final class LogPage implements Service {
 			</table>
 			<?php submit_button( __( 'Save settings', 'activity-log-with-undo' ) ); ?>
 		</form>
+		</section>
 
+		<section class="axle-card axle-card--danger">
 		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>" class="alu-purge">
 			<?php wp_nonce_field( self::SETTINGS_SAVE ); ?>
 			<input type="hidden" name="action" value="<?php echo esc_attr( self::SETTINGS_SAVE ); ?>">
 			<input type="hidden" name="task" value="purge">
-			<h2><?php esc_html_e( 'Clean up now', 'activity-log-with-undo' ); ?></h2>
+			<h2 class="axle-card__title"><?php esc_html_e( 'Delete old entries', 'activity-log-with-undo' ); ?></h2>
 			<p>
 				<?php
 				/* translators: 1: number of entries, 2: number of days. */
@@ -794,8 +809,10 @@ final class LogPage implements Service {
 				}
 				?>
 			</p>
-			<?php submit_button( __( 'Delete old entries now', 'activity-log-with-undo' ), 'secondary', 'submit', false ); ?>
+			<p class="description"><?php esc_html_e( 'Deleted entries cannot be brought back, and the changes they hold can no longer be undone.', 'activity-log-with-undo' ); ?></p>
+			<?php submit_button( __( 'Delete old entries now', 'activity-log-with-undo' ), 'secondary axle-button--danger', 'submit', false ); ?>
 		</form>
+		</section>
 		<?php
 	}
 }
