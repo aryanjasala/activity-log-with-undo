@@ -63,3 +63,15 @@ add_filter(
 	10,
 	3
 );
+
+// Lets a test open the log to a user who is not an administrator.
+add_filter(
+	'activity_log_with_undo_capability',
+	static function ( $capability ) {
+		$custom = (string) get_option( 'alu_e2e_log_cap', '' );
+		return '' !== $custom ? $custom : $capability;
+	}
+);
+
+// Application passwords on the plain HTTP test site.
+add_filter( 'wp_is_application_passwords_available', '__return_true' );

@@ -37,6 +37,18 @@ Always left out, whatever the lists say: transients, cron, rewrite rules, locks,
 
 Version 1.0.0 logged every option. The first time an administrator opens wp-admin after the update, a notice counts the entries of options that are not settings (for example `block_doctor_index`) and offers to delete them. Deleting runs in batches of 500, the rest through WP-Cron. **Keep them** hides the notice. `wp activity-log-with-undo cleanup` does the same, with `--dry-run` to see the list first. Entries of internal options already in the log are never undone together with a person's change.
 
+## Rolling back to a time
+
+Tools > Activity Log > **Roll back** puts the site back to an earlier moment. Pick 1 hour ago, this morning, the start of yesterday, a time of your own, or a log entry ("just before this change"), and narrow it to one user or one area if you like.
+
+The **preview** lists every change since then, newest first, grouped by area. Each is marked:
+
+- **Will be undone**;
+- **Cannot be undone**, with the reason (installs, updates, permanent deletions, entries over the size limit, things you may not edit);
+- **Clash**: something that is not in the list changed the same thing again, so putting the old value back would overwrite it. A change that a later change in the list covers is not a clash.
+
+The run undoes change sets newest first, a few per request (the progress bar shows how far it got), and skips clashes and reports them, unless you tick "Stop at the first change that clashes". Changes made by the roll back share one change set with one **Roll back** entry, so Redo on that entry puts everything back. A run handles up to 400 changes; the preview says when some are left for the next run. A roll back nobody finishes can be continued or cancelled on the same tab, and Site Health flags one that has been idle for an hour.
+
 ## Change sets and conflicts
 
 Every entry written in one request shares a change set. Undo on any entry undoes the whole set, newest first, so one save that changed five options comes back as one. A set holds at most 100 entries (filterable), so a long WP-CLI import does not become one giant undo.
@@ -84,6 +96,16 @@ The undo is logged like any other change, with `undo_of` pointing at the entry i
 | `activity_log_with_undo_revision_search_limit` | filter | `( int $limit )`. Revisions searched for the one to restore. Default 50 |
 | `activity_log_with_undo_purge_batch_size` | filter | `( int $size )`. Entries deleted per query by the clean-up. Default 1000 |
 | `activity_log_with_undo_default_settings` | filter | `( array $defaults )`. Settings used until someone saves the settings screen: `disabled`, `retention_days`, `ip`, `payload_kb`, `admin_bar` |
+| `activity_log_with_undo_can_view_entry` | filter | `( bool $allowed, Entry $entry, int $user_id )`. Whether the current user may see an entry and undo it. Default: they may edit the object it is about (`edit_post` for that post, `edit_term`, `edit_user`, `manage_options` for a setting). Hidden entries show without name or values |
+| `activity_log_with_undo_rollback_capability` | filter | `( string $capability )`. Who can roll the site back. Default: the log capability |
+| `activity_log_with_undo_rollback_presets` | filter | `( array $presets )`. The moments the Roll back tab offers: key => `array( 'label' => string, 'time' => Unix time in the past )`. Default 1 hour ago, this morning (6 am), start of yesterday |
+| `activity_log_with_undo_rollback_batch_size` | filter | `( int $size )`. Change sets undone per request. Default 10, between 1 and 100 |
+| `activity_log_with_undo_rollback_max_entries` | filter | `( int $limit )`. Changes one roll back undoes; the rest wait for the next run. Default 400, at most 500 |
+| `activity_log_with_undo_rollback_scan_limit` | filter | `( int $limit )`. Log entries a roll back reads. Default 2000 |
+| `activity_log_with_undo_rollback_time_budget` | filter | `( int $seconds )`. How long the `run-rollback` ability works before it hands back a running job. Default 20, between 1 and 120 |
+| `activity_log_with_undo_rollback_message` | filter | `( string $message, array $result )`. The notice shown when a roll back ends |
+| `activity_log_with_undo_before_rollback` | action | `( array $job, array $plan )`. A roll back is about to start undoing changes |
+| `activity_log_with_undo_after_rollback` | action | `( array $result, array $job )`. A roll back ended: `state` is `done`, `stopped`, `cancelled` or `abandoned`; `undone`, `skipped` and `summary` (the entry that logs it) say what happened |
 | `activity_log_with_undo_logged` | action | `( Entry $entry )`. A change was logged. For an outside log or an alert channel |
 | `activity_log_with_undo_before_undo` | action | `( Entry $entry, bool $force )`. An entry is about to be undone |
 | `activity_log_with_undo_undone` | action | `( Entry $entry, int[] $entries )`. An entry was undone; `$entries` logged the reversal |
@@ -125,8 +147,10 @@ The log screen runs `wp.hooks`, read when needed, so scripts that load later can
 
 | Hook | Type | Use |
 | --- | --- | --- |
-| `activityLogWithUndo.confirmMessage` | filter | `( message, context )`. The question asked before an undo. Return `''` to undo without asking. `context`: `entryId`, `force`, `redo`, `count`, `deletesUser`, `also` (descriptions of the other changes it undoes) |
+| `activityLogWithUndo.confirmMessage` | filter | `( message, context )`. What the in-place confirm step says will change before an undo. Return `''` to undo without asking. `context`: `entryId`, `force`, `redo`, `count`, `deletesUser`, `also` (descriptions of the other changes it undoes) |
 | `activityLogWithUndo.undone` | action | `( result, context )`. An undo finished, before the log reloads. `result`: `undone`, `failed`, `entries`, `forced`, `redirect` |
+| `activityLogWithUndo.rollbackProgress` | action | `( state )`. After each batch of a roll back: `state`, `done`, `total`, `undone`, `skipped`, `summary`, `deferred` |
+| `activityLogWithUndo.rollbackDone` | action | `( state )`. A roll back ended, before the log reloads |
 | `activityLogWithUndo.undoFailed` | action | `( error, context )`. An undo was refused or failed (another plugin blocks writes, the change cannot be undone). The message shows in a notice on the same page, which stays as it is. `error`: `code`, `message`, `data` |
 
 ```js
@@ -137,12 +161,14 @@ wp.hooks.addFilter( 'activityLogWithUndo.confirmMessage', 'my-plugin', ( message
 
 ## Abilities
 
-On WordPress 6.9 and later, Activity Log with Undo registers [abilities](https://developer.wordpress.org/apis/abilities/), so AI agents can use them through the [MCP adapter](https://github.com/WordPress/mcp-adapter) and anything else through the REST API under `/wp-abilities/v1/`. Each one is marked public, which the MCP adapter needs before it lists an ability. All of them need the log capability.
+On WordPress 6.9 and later, Activity Log with Undo registers [abilities](https://developer.wordpress.org/apis/abilities/), so AI agents can use them through the [MCP adapter](https://github.com/WordPress/mcp-adapter) and anything else through the REST API under `/wp-abilities/v1/`. Each one is marked public, which the MCP adapter needs before it lists an ability. All of them need the log capability, and each change is checked against the object it is about: an entry you may not edit comes back with `masked: true` and no object name, values or IP address, and cannot be undone. `run-rollback` also needs the roll back capability.
 
 | Ability | Does |
 | --- | --- |
 | `activity-log-with-undo/list-activity` | Read-only. Changes, newest first. Input: `event`, `object_type`, `object`, `user`, `via`, `since`, `until`, `search`, `undoable_only`, `limit`, `page` |
 | `activity-log-with-undo/get-entry` | Read-only. One change with `before`, `after`, `can_undo`, `reason`, `changed_since`, `conflicts` and `change_count`. Input: `id` |
+| `activity-log-with-undo/preview-rollback` | Read-only. Every change since a moment, newest first, each marked `will`, `blocked` (with the reason) or `conflict`, with counts. Input: `to` (a time in the site time zone, a preset `hour`, `morning`, `yesterday`, or a log entry number for "just before it"), `user`, `area` |
+| `activity-log-with-undo/run-rollback` | Destructive. Undoes everything since that moment, newest first, and logs it as one entry that can be redone. Clashes are skipped and reported unless `stop_on_conflict` is true. After `activity_log_with_undo_rollback_time_budget` seconds it answers `state: running` with a `job`; call again with `job` to continue |
 | `activity-log-with-undo/undo-change` | Destructive. Undoes `id` with the rest of its change set. Refuses with a 409 when things changed since, unless `force` is true |
 
 Changes made while an ability runs are logged with the source `ability`.
@@ -155,12 +181,13 @@ With [Agent Governance](https://github.com/aryanjasala/agent-governance) active,
 wp activity-log-with-undo list [--event=<event>] [--user=<id|login|email>] [--via=<via>] [--object-type=<type>] [--object=<id|name>] [--since=<date>] [--until=<date>] [--search=<text>] [--undoable] [--per-page=<n>] [--page=<n>] [--fields=<fields>] [--format=table|csv|json|yaml|count|ids]
 wp activity-log-with-undo show <id> [--format=table|json|yaml]
 wp activity-log-with-undo undo <id>... [--force] [--yes]
+wp activity-log-with-undo rollback --to=<time|id> [--user=<id|login|email>] [--area=<area>] [--stop-on-conflict] [--dry-run] [--yes] [--format=table|csv|json|yaml]
 wp activity-log-with-undo purge [--older-than=<days>]
 wp activity-log-with-undo cleanup [--dry-run] [--yes] [--format=table|csv|json|yaml]
 wp activity-log-with-undo settings [--retention-days=<n>] [--ip=full|masked|off] [--payload-kb=<n>] [--admin-bar=on|off] [--enable=<recorders>] [--disable=<recorders>] [--format=table|json|yaml]
 ```
 
-Dates take `2026-10-01`, an ISO 8601 time or `"2 days ago"`. `purge --older-than=0` empties the log. `undo` lists the other changes saved together and asks before undoing them all, and undoing a new user asks first too, unless `--yes`. Run it with `--user=<login>` so their content has someone to go to. `cleanup` deletes old entries of options that are not settings (see Upgrading from 1.0.0). Settings registered only in wp-admin are unknown to WP-CLI, so check its list before you confirm.
+Dates take `2026-10-01`, an ISO 8601 time or `"2 days ago"`. `purge --older-than=0` empties the log. `rollback --to` takes a time (`"2026-11-13 14:00"`, `"2 hours ago"`) or a log entry number, meaning just before that change. It prints what it would undo, asks, undoes in batches, and logs one entry; `undo` that entry to redo everything. `--area` is one of `options`, `plugins`, `themes`, `users`, `posts`, `terms`, `menus`, `site_editor`. `undo` lists the other changes saved together and asks before undoing them all, and undoing a new user asks first too, unless `--yes`. Run it with `--user=<login>` so their content has someone to go to. `cleanup` deletes old entries of options that are not settings (see Upgrading from 1.0.0). Settings registered only in wp-admin are unknown to WP-CLI, so check its list before you confirm.
 
 ## PHP API
 
@@ -170,6 +197,8 @@ $plugin = AryanX\Axle\ActivityLogWithUndo\Plugin::instance();
 $found  = $plugin->store()->find( array( 'event' => 'option_updated', 'per_page' => 10 ) );
 $result = $plugin->undoer()->undo( $found['entries'][0]->id );          // array, or WP_Error
 $force  = $plugin->undoer()->undo( 42, true );                          // past a conflict
+$plan   = $plugin->rollback()->plan( array( 'to' => 'yesterday' ) );    // what a roll back would do
+$state  = $plugin->rollback()->run( $plan );                            // undoes it, newest first
 ```
 
 A custom recorder implements `Recorder` (`id`, `label`, `events`, `register`, `can_undo`, `current_state`, `undo`, `describe`, `flush`), logs through `$plugin->logger()->log( array( 'event' => ..., 'recorder' => ..., 'object_type' => ..., 'object_id' => ..., 'before' => ..., 'after' => ..., 'undoable' => true ) )`, and joins through the `activity_log_with_undo_recorders` filter.
@@ -185,6 +214,8 @@ A custom recorder implements `Recorder` (`id`, `label`, `events`, `register`, `c
 | `activity_log_with_undo_cleanup` (job) | WP-Cron job that keeps deleting those entries in batches until done |
 | `_transient_activity_log_with_undo_*` | The per-option rate-limit counters, the cached table size, and one-time notices |
 | `activity_log_with_undo_purge` | Daily WP-Cron job that deletes old entries |
+| `activity_log_with_undo_rollback_job`, `activity_log_with_undo_rollback_lock` | The roll back in progress (not autoloaded) and its step lock. Both go when it ends; a job nobody touches for an hour is closed by the daily job |
+| `activity_log_with_undo_steps_dismissed` (user meta) | Set when someone hides the "Get started" card |
 
 States that survive a JSON round trip are stored as `{"v": ...}`. Anything else (objects in an option, for example) is stored serialized as `{"s": "..."}`, the way WordPress stores options. A state over the size limit is stored as `{"over_limit": <bytes>}`, or `{"over_limit": <bytes>, "reason": "log_full"}` when the log was over its size limit, and the entry cannot be undone.
 

@@ -1,61 +1,363 @@
 {
   "$comment": "Screens tests/e2e/a11y.spec.js checks with axe-core. This file belongs to the plugin: apply-template.py only writes it when it is missing. The fields are described in docs/DEVELOPMENT.md.",
-  "include": ["#wpbody-content"],
+  "include": [
+    "#wpbody-content"
+  ],
   "exclude": [],
   "screens": [
     {
       "name": "Tools > Activity Log, empty",
-      "setup": [["eval", "AryanX\\Axle\\ActivityLogWithUndo\\Plugin::instance()->store()->truncate();"]],
+      "setup": [
+        [
+          "eval",
+          "AryanX\\Axle\\ActivityLogWithUndo\\Plugin::instance()->store()->truncate();"
+        ]
+      ],
       "url": "/wp-admin/tools.php?page=activity-log-with-undo"
     },
     {
       "name": "Tools > Activity Log with changes",
       "setup": [
-        ["eval", "AryanX\\Axle\\ActivityLogWithUndo\\Plugin::instance()->store()->truncate();"],
-        { "wp": ["post", "create", "--post_title=Lemon tart", "--post_status=publish", "--post_content=A short pastry case and a sharp lemon curd.", "--porcelain", "--user=admin"], "save": "post" },
-        ["post", "update", "{post}", "--post_content=A short pastry case, a sharp lemon curd and burnt sugar on top.", "--user=admin"],
-        ["option", "update", "blogname", "Kitchen Notes", "--user=admin"],
-        ["post", "delete", "{post}", "--user=admin"]
+        [
+          "eval",
+          "AryanX\\Axle\\ActivityLogWithUndo\\Plugin::instance()->store()->truncate();"
+        ],
+        {
+          "wp": [
+            "post",
+            "create",
+            "--post_title=Lemon tart",
+            "--post_status=publish",
+            "--post_content=A short pastry case and a sharp lemon curd.",
+            "--porcelain",
+            "--user=admin"
+          ],
+          "save": "post"
+        },
+        [
+          "post",
+          "update",
+          "{post}",
+          "--post_content=A short pastry case, a sharp lemon curd and burnt sugar on top.",
+          "--user=admin"
+        ],
+        [
+          "option",
+          "update",
+          "blogname",
+          "Kitchen Notes",
+          "--user=admin"
+        ],
+        [
+          "post",
+          "delete",
+          "{post}",
+          "--user=admin"
+        ]
       ],
       "url": "/wp-admin/tools.php?page=activity-log-with-undo",
       "cleanup": [
-        ["post", "delete", "{post}", "--force"],
-        ["option", "update", "blogname", "E2E"],
-        ["eval", "AryanX\\Axle\\ActivityLogWithUndo\\Plugin::instance()->store()->truncate();"]
+        [
+          "post",
+          "delete",
+          "{post}",
+          "--force"
+        ],
+        [
+          "option",
+          "update",
+          "blogname",
+          "E2E"
+        ],
+        [
+          "eval",
+          "AryanX\\Axle\\ActivityLogWithUndo\\Plugin::instance()->store()->truncate();"
+        ]
       ]
     },
     {
       "name": "One change with its before and after values",
       "setup": [
-        ["eval", "AryanX\\Axle\\ActivityLogWithUndo\\Plugin::instance()->store()->truncate();"],
-        { "wp": ["post", "create", "--post_title=Lemon tart", "--post_status=publish", "--post_content=A short pastry case and a sharp lemon curd.", "--porcelain", "--user=admin"], "save": "post" },
-        ["post", "update", "{post}", "--post_content=A short pastry case, a sharp lemon curd and burnt sugar on top.", "--user=admin"],
-        { "wp": ["activity-log-with-undo", "list", "--event=post_updated", "--per-page=1", "--format=ids"], "save": "entry" }
+        [
+          "eval",
+          "AryanX\\Axle\\ActivityLogWithUndo\\Plugin::instance()->store()->truncate();"
+        ],
+        {
+          "wp": [
+            "post",
+            "create",
+            "--post_title=Lemon tart",
+            "--post_status=publish",
+            "--post_content=A short pastry case and a sharp lemon curd.",
+            "--porcelain",
+            "--user=admin"
+          ],
+          "save": "post"
+        },
+        [
+          "post",
+          "update",
+          "{post}",
+          "--post_content=A short pastry case, a sharp lemon curd and burnt sugar on top.",
+          "--user=admin"
+        ],
+        {
+          "wp": [
+            "activity-log-with-undo",
+            "list",
+            "--event=post_updated",
+            "--per-page=1",
+            "--format=ids"
+          ],
+          "save": "entry"
+        }
       ],
       "url": "/wp-admin/tools.php?page=activity-log-with-undo&entry={entry}",
       "cleanup": [
-        ["post", "delete", "{post}", "--force"],
-        ["eval", "AryanX\\Axle\\ActivityLogWithUndo\\Plugin::instance()->store()->truncate();"]
+        [
+          "post",
+          "delete",
+          "{post}",
+          "--force"
+        ],
+        [
+          "eval",
+          "AryanX\\Axle\\ActivityLogWithUndo\\Plugin::instance()->store()->truncate();"
+        ]
       ]
     },
     {
       "name": "A change made again since, with Undo anyway",
       "setup": [
-        ["eval", "AryanX\\Axle\\ActivityLogWithUndo\\Plugin::instance()->store()->truncate();"],
-        ["option", "update", "blogname", "Kitchen Notes Weekly", "--user=admin"],
-        { "wp": ["activity-log-with-undo", "list", "--event=option_updated", "--per-page=1", "--format=ids"], "save": "entry" },
-        ["option", "update", "blogname", "Kitchen Notes", "--user=admin"]
+        [
+          "eval",
+          "AryanX\\Axle\\ActivityLogWithUndo\\Plugin::instance()->store()->truncate();"
+        ],
+        [
+          "option",
+          "update",
+          "blogname",
+          "Kitchen Notes Weekly",
+          "--user=admin"
+        ],
+        {
+          "wp": [
+            "activity-log-with-undo",
+            "list",
+            "--event=option_updated",
+            "--per-page=1",
+            "--format=ids"
+          ],
+          "save": "entry"
+        },
+        [
+          "option",
+          "update",
+          "blogname",
+          "Kitchen Notes",
+          "--user=admin"
+        ]
       ],
       "url": "/wp-admin/tools.php?page=activity-log-with-undo&entry={entry}",
-      "steps": [{ "waitFor": ".alu-conflict" }],
+      "steps": [
+        {
+          "waitFor": ".alu-conflict"
+        }
+      ],
       "cleanup": [
-        ["option", "update", "blogname", "E2E"],
-        ["eval", "AryanX\\Axle\\ActivityLogWithUndo\\Plugin::instance()->store()->truncate();"]
+        [
+          "option",
+          "update",
+          "blogname",
+          "E2E"
+        ],
+        [
+          "eval",
+          "AryanX\\Axle\\ActivityLogWithUndo\\Plugin::instance()->store()->truncate();"
+        ]
       ]
     },
     {
       "name": "Tools > Activity Log settings",
       "url": "/wp-admin/tools.php?page=activity-log-with-undo&tab=settings"
+    },
+    {
+      "name": "Tools > Activity Log, Undo confirm open",
+      "setup": [
+        [
+          "eval",
+          "AryanX\\Axle\\ActivityLogWithUndo\\Plugin::instance()->store()->truncate();"
+        ],
+        [
+          "option",
+          "update",
+          "blogname",
+          "Kitchen Notes Daily",
+          "--user=admin"
+        ]
+      ],
+      "url": "/wp-admin/tools.php?page=activity-log-with-undo",
+      "steps": [
+        {
+          "click": "a.alu-undo"
+        },
+        {
+          "waitFor": ".alu-ask"
+        }
+      ],
+      "cleanup": [
+        [
+          "option",
+          "update",
+          "blogname",
+          "E2E"
+        ],
+        [
+          "eval",
+          "AryanX\\Axle\\ActivityLogWithUndo\\Plugin::instance()->store()->truncate();"
+        ]
+      ]
+    },
+    {
+      "name": "Tools > Activity Log, filtered with no match",
+      "setup": [
+        [
+          "eval",
+          "AryanX\\Axle\\ActivityLogWithUndo\\Plugin::instance()->store()->truncate();"
+        ]
+      ],
+      "url": "/wp-admin/tools.php?page=activity-log-with-undo&s=nothing-matches-this"
+    },
+    {
+      "name": "Tools > Activity Log > Roll back, choose a time",
+      "url": "/wp-admin/tools.php?page=activity-log-with-undo&tab=rollback"
+    },
+    {
+      "name": "Roll back, preview of what would change",
+      "setup": [
+        [
+          "eval",
+          "AryanX\\Axle\\ActivityLogWithUndo\\Plugin::instance()->store()->truncate();"
+        ],
+        [
+          "option",
+          "update",
+          "blogname",
+          "Kitchen Notes Daily",
+          "--user=admin"
+        ],
+        [
+          "option",
+          "update",
+          "blogdescription",
+          "Notes from the kitchen",
+          "--user=admin"
+        ],
+        {
+          "wp": [
+            "activity-log-with-undo",
+            "list",
+            "--event=option_updated",
+            "--per-page=1",
+            "--format=ids"
+          ],
+          "save": "entry"
+        }
+      ],
+      "url": "/wp-admin/tools.php?page=activity-log-with-undo&tab=rollback&rb_choice=entry&rb_entry={entry}&rb_go=1",
+      "cleanup": [
+        [
+          "option",
+          "update",
+          "blogname",
+          "E2E"
+        ],
+        [
+          "option",
+          "update",
+          "blogdescription",
+          "Just another site"
+        ],
+        [
+          "eval",
+          "AryanX\\Axle\\ActivityLogWithUndo\\Plugin::instance()->store()->truncate();"
+        ]
+      ]
+    },
+    {
+      "name": "Roll back, nothing changed since",
+      "setup": [
+        [
+          "eval",
+          "AryanX\\Axle\\ActivityLogWithUndo\\Plugin::instance()->store()->truncate();"
+        ]
+      ],
+      "url": "/wp-admin/tools.php?page=activity-log-with-undo&tab=rollback&rb_choice=hour&rb_go=1"
+    },
+    {
+      "name": "Roll back in progress (started by someone else)",
+      "setup": [
+        [
+          "eval",
+          "AryanX\\Axle\\ActivityLogWithUndo\\Plugin::instance()->store()->truncate();"
+        ],
+        [
+          "option",
+          "update",
+          "blogname",
+          "Kitchen Notes Daily",
+          "--user=admin"
+        ],
+        [
+          "eval",
+          "$r = AryanX\\Axle\\ActivityLogWithUndo\\Plugin::instance()->rollback(); wp_set_current_user( 1 ); $j = $r->start( $r->plan( array( 'to' => 'hour' ) ) ); $j['user'] = 999; update_option( 'activity_log_with_undo_rollback_job', $j, false );"
+        ]
+      ],
+      "url": "/wp-admin/tools.php?page=activity-log-with-undo&tab=rollback",
+      "cleanup": [
+        [
+          "eval",
+          "delete_option( 'activity_log_with_undo_rollback_job' ); delete_option( 'activity_log_with_undo_rollback_lock' );"
+        ],
+        [
+          "option",
+          "update",
+          "blogname",
+          "E2E"
+        ],
+        [
+          "eval",
+          "AryanX\\Axle\\ActivityLogWithUndo\\Plugin::instance()->store()->truncate();"
+        ]
+      ]
+    },
+    {
+      "name": "Settings with the delete step open",
+      "setup": [
+        [
+          "eval",
+          "AryanX\\Axle\\ActivityLogWithUndo\\Plugin::instance()->store()->truncate();"
+        ],
+        [
+          "eval",
+          "global $wpdb; $wpdb->insert( $wpdb->prefix . 'activity_log_with_undo', array( 'created_gmt' => '2020-01-01 00:00:00', 'change_set' => md5( 'old' ), 'event' => 'option_updated', 'recorder' => 'options', 'object_type' => 'option', 'object_id' => 'blogname' ) ); wp_cache_set_last_changed( 'activity_log_with_undo' );"
+        ]
+      ],
+      "url": "/wp-admin/tools.php?page=activity-log-with-undo&tab=settings",
+      "steps": [
+        {
+          "click": ".alu-reveal"
+        },
+        {
+          "waitFor": "#alu-purge-confirm:not([hidden])"
+        }
+      ],
+      "cleanup": [
+        [
+          "eval",
+          "AryanX\\Axle\\ActivityLogWithUndo\\Plugin::instance()->store()->truncate();"
+        ]
+      ]
     }
   ],
   "skip": {}

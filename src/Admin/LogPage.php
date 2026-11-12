@@ -1118,6 +1118,7 @@ final class LogPage implements Service {
 			<?php
 		}
 
+		$attempt = $counts['will'] + $counts['conflict'];
 		if ( ! $plan['runs'] ) {
 			echo '<div class="notice notice-info inline"><p>' . esc_html__( 'None of these changes can be undone, so there is nothing to run.', 'activity-log-with-undo' ) . '</p></div>';
 			return;
@@ -1139,14 +1140,14 @@ final class LogPage implements Service {
 					<p id="alu-run-confirm"><strong>
 						<?php
 						/* translators: %d: number of changes. */
-						echo esc_html( sprintf( _n( 'This undoes %d change, newest first.', 'This undoes %d changes, newest first.', $counts['will'], 'activity-log-with-undo' ), $counts['will'] ) );
+						echo esc_html( sprintf( _n( 'This undoes %d change, newest first.', 'This undoes %d changes, newest first.', $attempt, 'activity-log-with-undo' ), $attempt ) );
 						?>
 					</strong></p>
 					<p><?php esc_html_e( 'Changes that cannot be undone stay as they are. The roll back is logged as one entry, and Redo on that entry puts everything back.', 'activity-log-with-undo' ); ?></p>
 					<p class="axle-actions">
 						<?php
 						/* translators: %d: number of changes. */
-						submit_button( sprintf( _n( 'Roll back %d change', 'Roll back %d changes', $counts['will'], 'activity-log-with-undo' ), $counts['will'] ), 'primary', 'submit', false );
+						submit_button( sprintf( _n( 'Roll back %d change', 'Roll back %d changes', $attempt, 'activity-log-with-undo' ), $attempt ), 'primary', 'submit', false );
 						?>
 					</p>
 				</div>

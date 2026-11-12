@@ -38,6 +38,16 @@ Free and open source under the GPL. No pro version, no upsells, no ads in wp-adm
 * **Undo is logged too**, so it can be undone. That is your redo.
 * **Before and after, side by side.** A word diff for text, a table for everything else.
 
+= Roll back to a time =
+
+"The site was fine at 2 pm." Open Tools > Activity Log > Roll back, pick 1 hour ago, this morning, yesterday, a time of your own, or "just before this change" from any row. You can narrow it to one user or one area.
+
+The preview lists every change since then, newest first, grouped by area. Each one is marked as will be undone, cannot be undone (with the reason), or clashes with a later change that is not in the list. Nothing happens until you press the button. The run undoes the changes in small batches with a progress bar, skips clashes and tells you which, or stops at the first one if you ask. The roll back is logged as one entry, and Redo on it puts everything back.
+
+= Only what you may see =
+
+The log can be opened by people who cannot edit everything in it. An entry about a post, term, user or setting you are not allowed to edit shows as a hidden change, without its name, values or IP address, in the log, the REST API, the abilities and WP-CLI. You cannot undo it either.
+
 = Find a change =
 
 Tools > Activity Log lists every change with who made it and how: the dashboard, the REST API or block editor, an application password, WP-CLI, a scheduled task, XML-RPC or an AI agent through the Abilities API. Filter by event, user, source, dates and object, or search. Select several rows to undo them in one go.
@@ -50,13 +60,14 @@ Turn on "Undo last change" in the admin bar to undo your own most recent change 
 `wp activity-log-with-undo show 42`
 `wp activity-log-with-undo undo 42`
 `wp activity-log-with-undo undo 42 --force`
+`wp activity-log-with-undo rollback --to="2026-11-13 14:00" --dry-run`
 `wp activity-log-with-undo purge --older-than=30`
 `wp activity-log-with-undo cleanup --dry-run`
 `wp activity-log-with-undo settings --retention-days=30 --ip=off`
 
 = For AI agents =
 
-On WordPress 6.9 and later, three abilities let an agent list the activity, read one change with its before and after state, and undo it. Undo refuses when things changed since, unless the agent passes `force`.
+On WordPress 6.9 and later, five abilities let an agent list the activity, read one change with its before and after state, undo it, preview a roll back to a moment (read-only) and run it. Undo refuses when things changed since, unless the agent passes `force`.
 
 With Agent Governance active, a change an agent made after someone approved its request says which agent it was, the request number, and who approved it.
 
@@ -73,6 +84,10 @@ Undo needs the state from before the change. Plugin and theme updates replace fi
 = What happens if someone changed it again after the entry? =
 
 Undo stops and shows what is different between the logged change and now. Use Undo anyway to put the old version back and overwrite the later change, or leave it.
+
+= Can I roll the whole site back? =
+
+Yes, to a moment you pick, for everything the log can undo. Changes that cannot be undone, such as plugin updates and permanent deletions, stay as they are, and the preview lists them with the reason. Files, uploads and anything the log does not record are not touched.
 
 = Does it log changes made with WP-CLI? =
 
