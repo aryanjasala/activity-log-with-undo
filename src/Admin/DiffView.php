@@ -73,6 +73,17 @@ final class DiffView {
 			);
 		}
 
+		if ( ! $keyed && '' !== $rows && '' === $texts ) {
+			// One value before and after: the shared diff component.
+			return sprintf(
+				'<div class="axle-diff alu-value-diff"><del dir="auto"><span class="screen-reader-text">%1$s: </span>%2$s</del><ins dir="auto"><span class="screen-reader-text">%3$s: </span>%4$s</ins></div>',
+				esc_html( $left_title ),
+				self::value( $left[''] ?? null ),
+				esc_html( $right_title ),
+				self::value( $right[''] ?? null )
+			);
+		}
+
 		$table = '' === $rows ? '' : sprintf(
 			'<table class="widefat striped alu-diff-table"><thead><tr>%4$s<th scope="col">%1$s</th><th scope="col">%2$s</th></tr></thead><tbody>%3$s</tbody></table>',
 			esc_html( $left_title ),

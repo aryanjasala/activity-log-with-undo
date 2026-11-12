@@ -37,10 +37,11 @@ final class Notices implements Service {
 	/**
 	 * Adds a notice for the current user.
 	 *
-	 * @param string $type    success, warning, error or info.
-	 * @param string $message Message.
+	 * @param string                                 $type    success, warning, error or info.
+	 * @param string                                 $message Message.
+	 * @param array{label: string, url: string}|null $link  A link after the message, such as Redo.
 	 */
-	public static function add( string $type, string $message ): void {
+	public static function add( string $type, string $message, ?array $link = null ): void {
 		$user_id = get_current_user_id();
 		if ( ! $user_id ) {
 			return;
@@ -49,6 +50,10 @@ final class Notices implements Service {
 		$notices[] = array(
 			'type'    => in_array( $type, array( 'success', 'warning', 'error', 'info' ), true ) ? $type : 'info',
 			'message' => $message,
+			'link'    => $link && ! empty( $link['label'] ) && ! empty( $link['url'] ) ? array(
+				'label' => (string) $link['label'],
+				'url'   => (string) $link['url'],
+			) : null,
 		);
 		set_transient( self::key( $user_id ), array_values( array_filter( $notices ) ), 5 * MINUTE_IN_SECONDS );
 	}
@@ -66,7 +71,13 @@ final class Notices implements Service {
 
 		foreach ( $notices as $notice ) {
 			if ( is_array( $notice ) && isset( $notice['message'] ) ) {
-				printf( '<div class="notice notice-%1$s is-dismissible alu-notice"><p>%2$s</p></div>', esc_attr( (string) $notice['type'] ), esc_html( (string) $notice['message'] ) );
+				$link = ! empty( $notice['link']['url'] ) ? sprintf( ' <a href="%1$s" class="alu-notice-link">%2$s</a>', esc_url( (string) $notice['link']['url'] ), esc_html( (string) $notice['link']['label'] ) ) : '';
+				printf(
+					'<div class="notice notice-%1$s is-dismissible alu-notice"><p>%2$s%3$s</p></div>',
+					esc_attr( (string) $notice['type'] ),
+					esc_html( (string) $notice['message'] ),
+					$link // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Escaped above.
+				);
 			}
 		}
 	}

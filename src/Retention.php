@@ -33,14 +33,23 @@ final class Retention implements Service {
 	private Settings $settings;
 
 	/**
+	 * Roll backs, to drop one nobody finished.
+	 *
+	 * @var Rollback|null
+	 */
+	private ?Rollback $rollback;
+
+	/**
 	 * Sets up the clean-up.
 	 *
-	 * @param Store    $store    Entries.
-	 * @param Settings $settings Saved settings.
+	 * @param Store         $store    Entries.
+	 * @param Settings      $settings Saved settings.
+	 * @param Rollback|null $rollback Roll backs.
 	 */
-	public function __construct( Store $store, Settings $settings ) {
+	public function __construct( Store $store, Settings $settings, ?Rollback $rollback = null ) {
 		$this->store    = $store;
 		$this->settings = $settings;
+		$this->rollback = $rollback;
 	}
 
 	/**
@@ -71,6 +80,12 @@ final class Retention implements Service {
 	 * The cron job: deletes old entries, and comes back if there are more.
 	 */
 	public function run(): void {
+		$job = $this->rollback ? $this->rollback->job() : null;
+		if ( $job && Rollback::is_stale( $job ) ) {
+			// A roll back nobody finished: close it, so its entry says what it did and the job data goes.
+			$this->rollback->abandon( $job );
+		}
+
 		$result = $this->purge( $this->settings->retention_days() );
 		if ( ! $result['done'] && ! wp_next_scheduled( self::HOOK, array( 'more' ) ) ) {
 			wp_schedule_single_event( time() + MINUTE_IN_SECONDS, self::HOOK, array( 'more' ) );

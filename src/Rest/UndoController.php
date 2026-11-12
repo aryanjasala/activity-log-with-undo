@@ -8,13 +8,15 @@
 namespace AryanX\Axle\ActivityLogWithUndo\Rest;
 
 use AryanX\Axle\ActivityLogWithUndo\Admin\LogPage;
+use AryanX\Axle\ActivityLogWithUndo\Rollback;
 use AryanX\Axle\ActivityLogWithUndo\Service;
 use AryanX\Axle\ActivityLogWithUndo\Undoer;
 
 defined( 'ABSPATH' ) || exit;
 
 /**
- * POST /activity-log-with-undo/v1/entries/<id>/undo with `force`.
+ * POST /activity-log-with-undo/v1/entries/<id>/undo with `force`, and
+ * POST /rollback/<job>/step and /rollback/<job>/cancel for a roll back.
  *
  * Answers 409 with the differences when things changed since, and the page
  * that shows them. Other errors carry only their message, which the screen
@@ -32,12 +34,21 @@ final class UndoController implements Service {
 	private Undoer $undoer;
 
 	/**
-	 * Sets up the route.
+	 * Rolls the site back to a moment.
 	 *
-	 * @param Undoer $undoer Reverses changes.
+	 * @var Rollback
 	 */
-	public function __construct( Undoer $undoer ) {
-		$this->undoer = $undoer;
+	private Rollback $rollback;
+
+	/**
+	 * Sets up the routes.
+	 *
+	 * @param Undoer   $undoer   Reverses changes.
+	 * @param Rollback $rollback Rolls the site back to a moment.
+	 */
+	public function __construct( Undoer $undoer, Rollback $rollback ) {
+		$this->undoer   = $undoer;
+		$this->rollback = $rollback;
 	}
 
 	/**
@@ -73,6 +84,67 @@ final class UndoController implements Service {
 				),
 			)
 		);
+
+		foreach ( array( 'step', 'cancel' ) as $action ) {
+			register_rest_route(
+				self::NAMESPACE,
+				'/rollback/(?P<job>[a-f0-9]{32})/' . $action,
+				array(
+					'methods'             => 'POST',
+					'callback'            => array( $this, $action ),
+					'permission_callback' => array( Rollback::class, 'allowed' ),
+					'args'                => array(
+						'job' => array(
+							'type'     => 'string',
+							'pattern'  => '^[a-f0-9]{32}$',
+							'required' => true,
+						),
+					),
+				)
+			);
+		}
+	}
+
+	/**
+	 * Reverses the next few change sets of a roll back.
+	 *
+	 * @param \WP_REST_Request $request Request.
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	public function step( $request ) {
+		return $this->answer( $this->rollback->step( (string) $request->get_param( 'job' ) ) );
+	}
+
+	/**
+	 * Stops a roll back.
+	 *
+	 * @param \WP_REST_Request $request Request.
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	public function cancel( $request ) {
+		return $this->answer( $this->rollback->cancel( (string) $request->get_param( 'job' ) ) );
+	}
+
+	/**
+	 * A roll back's state as a response. When it ended, the log screen shows what happened.
+	 *
+	 * @param array|\WP_Error $state State, or the reason it failed.
+	 * @return \WP_REST_Response|\WP_Error
+	 */
+	private function answer( $state ) {
+		if ( $state instanceof \WP_Error ) {
+			$data           = (array) $state->get_error_data();
+			$data['status'] = (int) ( $data['status'] ?? 400 );
+
+			return new \WP_Error( $state->get_error_code(), $state->get_error_message(), $data );
+		}
+
+		if ( 'running' !== $state['state'] ) {
+			LogPage::notice_for_rollback( $state );
+			$state['redirect'] = LogPage::url( array( 'tab' => 'rollback' ) );
+		}
+
+		return new \WP_REST_Response( $state );
 	}
 
 	/**

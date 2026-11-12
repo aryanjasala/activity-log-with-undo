@@ -19,6 +19,7 @@ use AryanX\Axle\ActivityLogWithUndo\Recorders\OptionsRecorder;
 use AryanX\Axle\ActivityLogWithUndo\Recorders\PluginsRecorder;
 use AryanX\Axle\ActivityLogWithUndo\Recorders\PostsRecorder;
 use AryanX\Axle\ActivityLogWithUndo\Recorders\Registry;
+use AryanX\Axle\ActivityLogWithUndo\Recorders\RollbackRecorder;
 use AryanX\Axle\ActivityLogWithUndo\Recorders\SiteEditorRecorder;
 use AryanX\Axle\ActivityLogWithUndo\Recorders\TermsRecorder;
 use AryanX\Axle\ActivityLogWithUndo\Recorders\ThemesRecorder;
@@ -82,6 +83,13 @@ final class Plugin {
 	private Undoer $undoer;
 
 	/**
+	 * Rolls the site back to a moment.
+	 *
+	 * @var Rollback
+	 */
+	private Rollback $rollback;
+
+	/**
 	 * Deletes old entries.
 	 *
 	 * @var Retention
@@ -132,13 +140,15 @@ final class Plugin {
 			new TermsRecorder( $this->logger, new CategoryTagTrash() ),
 			new MenusRecorder( $this->logger ),
 			new SiteEditorRecorder( $this->logger ),
+			new RollbackRecorder( $this->logger ),
 		);
 		if ( is_multisite() ) {
 			$recorders[] = new NetworkRecorder( $this->logger );
 		}
 		$this->registry  = new Registry( $recorders, $this->settings );
 		$this->undoer    = new Undoer( $this->store, $this->logger, $this->registry );
-		$this->retention = new Retention( $this->store, $this->settings );
+		$this->rollback  = new Rollback( $this->store, $this->logger, $this->undoer, $this->registry );
+		$this->retention = new Retention( $this->store, $this->settings, $this->rollback );
 		$this->cleanup   = new Cleanup( $this->store, $options );
 	}
 
@@ -147,6 +157,8 @@ final class Plugin {
 	 */
 	public static function deactivate(): void {
 		Retention::unschedule();
+		delete_option( Rollback::JOB_OPTION );
+		delete_option( Rollback::LOCK_OPTION );
 		wp_clear_scheduled_hook( Cleanup::HOOK );
 	}
 
@@ -178,6 +190,15 @@ final class Plugin {
 	}
 
 	/**
+	 * Roll backs, for other plugins.
+	 *
+	 * @return Rollback
+	 */
+	public function rollback(): Rollback {
+		return $this->rollback;
+	}
+
+	/**
 	 * Recorders.
 	 *
 	 * @return Registry
@@ -192,18 +213,18 @@ final class Plugin {
 	private function register(): void {
 		Schema::maybe_install();
 
-		$abilities = new Abilities( $this->store, $this->registry, $this->undoer );
+		$abilities = new Abilities( $this->store, $this->registry, $this->undoer, $this->rollback );
 		$services  = array(
 			$this->context,
 			$this->registry,
 			$this->retention,
 			$this->cleanup,
 			new Privacy( $this->store, $this->registry ),
-			new LogPage( $this->store, $this->registry, $this->undoer, $this->settings, $this->retention ),
+			new LogPage( $this->store, $this->registry, $this->undoer, $this->settings, $this->retention, $this->rollback ),
 			new Notices(),
 			new AdminBar( $this->store, $this->registry, $this->settings ),
-			new UndoController( $this->undoer ),
-			new SiteHealth( $this->settings, $this->store ),
+			new UndoController( $this->undoer, $this->rollback ),
+			new SiteHealth( $this->settings, $this->store, $this->rollback ),
 			$abilities,
 		);
 
@@ -212,7 +233,7 @@ final class Plugin {
 		}
 
 		if ( defined( 'WP_CLI' ) && WP_CLI ) {
-			\WP_CLI::add_command( 'activity-log-with-undo', new Command( $this->store, $this->registry, $this->undoer, $this->retention, $this->settings, $abilities, $this->cleanup ) );
+			\WP_CLI::add_command( 'activity-log-with-undo', new Command( $this->store, $this->registry, $this->undoer, $this->retention, $this->settings, $abilities, $this->cleanup, $this->rollback ) );
 		}
 	}
 }

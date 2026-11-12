@@ -68,7 +68,11 @@ final class Undoer {
 		}
 
 		$recorder = $this->registry->get( $entry->recorder );
-		$can      = $recorder ? $recorder->can_undo( $entry ) : new \WP_Error( 'activity_log_with_undo_cannot_undo', __( 'The part of the plugin that logged this change is not loaded, so it cannot be undone.', 'activity-log-with-undo' ) );
+		$refusal  = Access::refusal( $entry );
+		if ( $refusal ) {
+			return $refusal;
+		}
+		$can = $recorder ? $recorder->can_undo( $entry ) : new \WP_Error( 'activity_log_with_undo_cannot_undo', __( 'The part of the plugin that logged this change is not loaded, so it cannot be undone.', 'activity-log-with-undo' ) );
 		if ( true === $can && ! $entry->undoable ) {
 			$can = new \WP_Error( 'activity_log_with_undo_cannot_undo', __( 'This change cannot be undone.', 'activity-log-with-undo' ) );
 		}
@@ -183,10 +187,11 @@ final class Undoer {
 	 * What undoing an entry would do: the entries in its change set, the ones
 	 * that cannot be undone, and the ones that changed since.
 	 *
-	 * @param int $entry_id Entry ID.
+	 * @param int        $entry_id Entry ID.
+	 * @param int[]|null $only     Undo only these entries of the change set (a roll back narrowed by user or area). The entry itself must be one of them.
 	 * @return array{entry: Entry, entries: Entry[], blocked: array<int, \WP_Error>, conflicts: array[]}|\WP_Error
 	 */
-	public function check( int $entry_id ) {
+	public function check( int $entry_id, ?array $only = null ) {
 		$entry = $this->store->get( $entry_id );
 		if ( ! $entry ) {
 			return new \WP_Error( 'activity_log_with_undo_not_found', __( 'That log entry does not exist.', 'activity-log-with-undo' ), array( 'status' => 404 ) );
@@ -197,6 +202,17 @@ final class Undoer {
 		}
 
 		$entries = $this->members( $entry );
+		if ( null !== $only ) {
+			$only    = array_map( 'intval', $only );
+			$entries = array_values(
+				array_filter(
+					$entries,
+					static function ( Entry $item ) use ( $only ) {
+						return in_array( $item->id, $only, true );
+					}
+				)
+			);
+		}
 
 		$blocked = array();
 		foreach ( $entries as $item ) {
@@ -238,12 +254,13 @@ final class Undoer {
 	/**
 	 * Undoes an entry and the rest of its change set.
 	 *
-	 * @param int  $entry_id Entry ID.
-	 * @param bool $force    Undo even when things changed since.
+	 * @param int        $entry_id Entry ID.
+	 * @param bool       $force    Undo even when things changed since.
+	 * @param int[]|null $only     Undo only these entries of the change set. Used by roll backs.
 	 * @return array{undone: int[], failed: array<int, string>, entries: int[], forced: bool}|\WP_Error
 	 */
-	public function undo( int $entry_id, bool $force = false ) {
-		$check = $this->check( $entry_id );
+	public function undo( int $entry_id, bool $force = false, ?array $only = null ) {
+		$check = $this->check( $entry_id, $only );
 		if ( $check instanceof \WP_Error ) {
 			return $check;
 		}

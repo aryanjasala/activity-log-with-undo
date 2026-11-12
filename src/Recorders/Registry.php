@@ -7,6 +7,7 @@
 
 namespace AryanX\Axle\ActivityLogWithUndo\Recorders;
 
+use AryanX\Axle\ActivityLogWithUndo\Access;
 use AryanX\Axle\ActivityLogWithUndo\Entry;
 use AryanX\Axle\ActivityLogWithUndo\Service;
 use AryanX\Axle\ActivityLogWithUndo\Settings;
@@ -93,6 +94,20 @@ final class Registry implements Service {
 	}
 
 	/**
+	 * The recorders a person can switch on and off. Recorders that hook into nothing, such as the roll back entry, stay out.
+	 *
+	 * @return array<string, Recorder>
+	 */
+	public function configurable(): array {
+		return array_filter(
+			$this->recorders,
+			static function ( Recorder $recorder ) {
+				return ! ( method_exists( $recorder, 'hidden' ) && $recorder->hidden() );
+			}
+		);
+	}
+
+	/**
 	 * One recorder.
 	 *
 	 * @param string $id Recorder ID.
@@ -124,6 +139,9 @@ final class Registry implements Service {
 	 */
 	public function describe( Entry $entry ): string {
 		$recorder = $this->get( $entry->recorder );
+		if ( ! Access::can_view( $entry ) ) {
+			return Access::hidden_text();
+		}
 		if ( 'undo' === $entry->event ) {
 			/* translators: %d: entry number. */
 			$text = sprintf( __( 'Undid change #%d', 'activity-log-with-undo' ), (int) $entry->undo_of );

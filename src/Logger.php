@@ -61,6 +61,13 @@ final class Logger {
 	private ?int $undo_of = null;
 
 	/**
+	 * A change set ID that every entry written now joins, while a roll back runs.
+	 *
+	 * @var string
+	 */
+	private string $pinned = '';
+
+	/**
 	 * Entries written by the current undo, keyed by the entry they reverse.
 	 *
 	 * @var array<int, int[]>
@@ -274,6 +281,10 @@ final class Logger {
 		 */
 		$size = max( 1, (int) apply_filters( 'activity_log_with_undo_change_set_size', 100 ) );
 
+		if ( '' !== $this->pinned ) {
+			return $this->pinned;
+		}
+
 		if ( '' === $this->change_set || ( null === $this->undo_of && $this->in_set >= $size ) ) {
 			$this->new_change_set();
 		}
@@ -335,10 +346,32 @@ final class Logger {
 	}
 
 	/**
+	 * Makes every entry written from now until unpin_change_set() join one change set.
+	 *
+	 * A roll back runs over several requests. Its reversals share a change set, so
+	 * one Redo puts them all back.
+	 *
+	 * @param string $change_set Change set ID, 32 hex characters.
+	 */
+	public function pin_change_set( string $change_set ): void {
+		$this->pinned     = $change_set;
+		$this->change_set = $change_set;
+		$this->in_set     = 0;
+	}
+
+	/**
+	 * Goes back to a change set per request or undo.
+	 */
+	public function unpin_change_set(): void {
+		$this->pinned = '';
+		$this->new_change_set();
+	}
+
+	/**
 	 * Starts a new change set.
 	 */
 	private function new_change_set(): void {
-		$this->change_set = str_replace( '-', '', wp_generate_uuid4() );
+		$this->change_set = '' !== $this->pinned ? $this->pinned : str_replace( '-', '', wp_generate_uuid4() );
 		$this->in_set     = 0;
 	}
 }
