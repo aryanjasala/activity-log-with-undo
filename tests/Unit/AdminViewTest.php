@@ -45,10 +45,10 @@ final class AdminViewTest extends LogTestCase {
 		$entry = $this->entry( array( 'event' => 'term_deleted' ) );
 
 		$alone = LogPage::undo_link( $entry, array(), false );
-		$this->assertStringContainsString( 'data-alu-confirm="Undo this change?"', $alone );
+		$this->assertStringContainsString( 'data-alu-confirm="This puts the old value back."', $alone );
 
 		$link = LogPage::undo_link( $entry, array( 'Changed Site title', 'Changed Tagline' ), false );
-		$this->assertStringContainsString( 'Undo this change? It also undoes 2 other changes saved with it: Changed Site title; Changed Tagline.', $link );
+		$this->assertStringContainsString( 'This puts the old value back. It also undoes 2 other changes saved with it: Changed Site title; Changed Tagline.', $link );
 		$this->assertStringContainsString( 'data-alu-count="3"', $link );
 		$this->assertStringContainsString( 'data-alu-also="[&quot;Changed Site title&quot;,&quot;Changed Tagline&quot;]"', $link );
 
@@ -58,7 +58,7 @@ final class AdminViewTest extends LogTestCase {
 
 	public function test_the_question_is_filterable(): void {
 		$entry = $this->entry( array() );
-		Filters\expectApplied( 'activity_log_with_undo_confirm_message' )->once()->with( 'Undo this change?', \Mockery::type( Entry::class ), array(), false )->andReturn( 'Really?' );
+		Filters\expectApplied( 'activity_log_with_undo_confirm_message' )->once()->with( 'This puts the old value back.', \Mockery::type( Entry::class ), array(), false )->andReturn( 'Really?' );
 
 		$this->assertStringContainsString( 'data-alu-confirm="Really?"', LogPage::undo_link( $entry, array(), false ) );
 	}

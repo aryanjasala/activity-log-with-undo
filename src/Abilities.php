@@ -45,16 +45,25 @@ final class Abilities implements Service {
 	private Undoer $undoer;
 
 	/**
+	 * Rolls the site back to a moment.
+	 *
+	 * @var Rollback
+	 */
+	private Rollback $rollback;
+
+	/**
 	 * Sets up the abilities.
 	 *
 	 * @param Store    $store    Entries.
 	 * @param Registry $registry Recorders.
 	 * @param Undoer   $undoer   Reverses changes.
+	 * @param Rollback $rollback Rolls the site back to a moment.
 	 */
-	public function __construct( Store $store, Registry $registry, Undoer $undoer ) {
+	public function __construct( Store $store, Registry $registry, Undoer $undoer, Rollback $rollback ) {
 		$this->store    = $store;
 		$this->registry = $registry;
 		$this->undoer   = $undoer;
+		$this->rollback = $rollback;
 	}
 
 	/**
@@ -112,6 +121,10 @@ final class Abilities implements Service {
 				'user'         => array( 'type' => 'string' ),
 				'via'          => array( 'type' => 'string' ),
 				'ip'           => array( 'type' => 'string' ),
+				'masked'       => array(
+					'type'        => 'boolean',
+					'description' => 'True when the current user may not see what this change was about. The object and its values are left out.',
+				),
 				'undoable'     => array( 'type' => 'boolean' ),
 				'undone_by'    => array( 'type' => array( 'integer', 'null' ) ),
 				'undo_of'      => array( 'type' => array( 'integer', 'null' ) ),
@@ -283,6 +296,181 @@ final class Abilities implements Service {
 				'idempotent'  => false,
 			)
 		);
+
+		$rollback_input = array(
+			'to'   => array(
+				'type'        => 'string',
+				'description' => __( 'The moment to go back to: a time in the site time zone such as 2026-11-13 14:00, a preset (hour, morning, yesterday), or a log entry number, to go back to just before that change.', 'activity-log-with-undo' ),
+			),
+			'user' => array(
+				'type'        => 'integer',
+				'description' => __( 'Only undo changes made by this user ID.', 'activity-log-with-undo' ),
+			),
+			'area' => array(
+				'type'        => 'string',
+				'description' => __( 'Only undo changes of one area: options, plugins, themes, users, posts, terms, menus or site_editor.', 'activity-log-with-undo' ),
+			),
+		);
+
+		$this->ability(
+			'preview-rollback',
+			__( 'Preview a roll back', 'activity-log-with-undo' ),
+			__( 'Lists every change made since a moment, newest first, and says for each whether a roll back would undo it, cannot undo it (with the reason) or would clash with a later change that is not in the list. Changes nothing.', 'activity-log-with-undo' ),
+			array(
+				'type'                 => 'object',
+				'properties'           => $rollback_input,
+				'required'             => array( 'to' ),
+				'additionalProperties' => false,
+			),
+			array(
+				'type'       => 'object',
+				'properties' => array(
+					'since'    => array( 'type' => 'string' ),
+					'counts'   => array(
+						'type'        => 'object',
+						'description' => 'will (changes that would be undone), blocked, conflict and sets.',
+					),
+					'deferred' => array( 'type' => 'integer' ),
+					'changes'  => array(
+						'type'  => 'array',
+						'items' => array(
+							'type'       => 'object',
+							'properties' => $entry['properties'] + array(
+								'status' => array(
+									'type' => 'string',
+									'enum' => array( 'will', 'blocked', 'conflict' ),
+								),
+								'reason' => array( 'type' => 'string' ),
+							),
+						),
+					),
+				),
+			),
+			array( $this, 'preview_rollback' ),
+			$can,
+			array(
+				'readonly'   => true,
+				'idempotent' => true,
+			)
+		);
+
+		$this->ability(
+			'run-rollback',
+			__( 'Roll back to a moment', 'activity-log-with-undo' ),
+			__( 'Undoes every change made since a moment, newest first, and logs the roll back as one entry that can be redone. Changes that clash with a later change are skipped and reported, unless stop_on_conflict is true. A big roll back works for up to 20 seconds and answers with state "running" and a job; call again with that job to continue. Run preview-rollback first.', 'activity-log-with-undo' ),
+			array(
+				'type'                 => 'object',
+				'properties'           => $rollback_input + array(
+					'stop_on_conflict' => array(
+						'type'    => 'boolean',
+						'default' => false,
+					),
+					'job'              => array(
+						'type'        => 'string',
+						'description' => __( 'Job from an earlier answer with state running. Continues it instead of starting a new roll back.', 'activity-log-with-undo' ),
+					),
+				),
+				'additionalProperties' => false,
+			),
+			array(
+				'type'       => 'object',
+				'properties' => array(
+					'state'    => array(
+						'type' => 'string',
+						'enum' => array( 'running', 'done', 'stopped', 'cancelled' ),
+					),
+					'job'      => array( 'type' => 'string' ),
+					'done'     => array( 'type' => 'integer' ),
+					'total'    => array( 'type' => 'integer' ),
+					'undone'   => array( 'type' => 'integer' ),
+					'skipped'  => array( 'type' => 'array' ),
+					'summary'  => array(
+						'type'        => 'integer',
+						'description' => 'Entry that logs the roll back. Undo it to redo everything.',
+					),
+					'deferred' => array( 'type' => 'integer' ),
+				),
+			),
+			array( $this, 'run_rollback' ),
+			static function (): bool {
+				return Rollback::allowed();
+			},
+			array(
+				'readonly'    => false,
+				'destructive' => true,
+				'idempotent'  => false,
+			)
+		);
+	}
+
+	/**
+	 * Ability: what a roll back would do.
+	 *
+	 * @param array|null $input Ability input.
+	 * @return array|\WP_Error
+	 */
+	public function preview_rollback( $input = null ) {
+		$input = (array) $input;
+		$plan  = $this->rollback->plan(
+			array(
+				'to'   => (string) ( $input['to'] ?? '' ),
+				'user' => isset( $input['user'] ) ? (int) $input['user'] : '',
+				'area' => (string) ( $input['area'] ?? '' ),
+			)
+		);
+		if ( $plan instanceof \WP_Error ) {
+			return $plan;
+		}
+
+		$changes = array();
+		foreach ( array_slice( $plan['items'], 0, 100 ) as $item ) {
+			$changes[] = $this->summary( $item['entry'] ) + array(
+				'status' => $item['status'],
+				'reason' => $item['reason'],
+			);
+		}
+
+		return array(
+			'since'    => gmdate( 'c', strtotime( $plan['since'] . ' UTC' ) ),
+			'counts'   => $plan['counts'],
+			'deferred' => $plan['deferred'],
+			'changes'  => $changes,
+		);
+	}
+
+	/**
+	 * Ability: rolls back, or continues a roll back.
+	 *
+	 * @param array|null $input Ability input.
+	 * @return array|\WP_Error
+	 */
+	public function run_rollback( $input = null ) {
+		$input = (array) $input;
+
+		/**
+		 * Filters how many seconds the run-rollback ability works before it hands back a running job.
+		 *
+		 * @param int $seconds Default 20, between 1 and 120.
+		 */
+		$cap = max( 1, min( 120, (int) apply_filters( 'activity_log_with_undo_rollback_time_budget', 20 ) ) );
+
+		if ( ! empty( $input['job'] ) ) {
+			$state = $this->rollback->continue_job( (string) $input['job'], $cap );
+		} else {
+			$plan = $this->rollback->plan(
+				array(
+					'to'   => (string) ( $input['to'] ?? '' ),
+					'user' => isset( $input['user'] ) ? (int) $input['user'] : '',
+					'area' => (string) ( $input['area'] ?? '' ),
+				)
+			);
+			if ( $plan instanceof \WP_Error ) {
+				return $plan;
+			}
+			$state = $this->rollback->run( $plan, ! empty( $input['stop_on_conflict'] ), $cap );
+		}
+
+		return $state;
 	}
 
 	/**
@@ -334,6 +522,18 @@ final class Abilities implements Service {
 	 * @return array
 	 */
 	public function details( Entry $entry ): array {
+		if ( ! Access::can_view( $entry ) ) {
+			return Access::mask( $this->summary( $entry ) ) + array(
+				'before'        => null,
+				'after'         => null,
+				'can_undo'      => false,
+				'reason'        => Access::hidden_text(),
+				'changed_since' => false,
+				'conflicts'     => array(),
+				'change_count'  => 1,
+			);
+		}
+
 		$check = $this->undoer->check( $entry->id );
 		$data  = $this->summary( $entry ) + array(
 			'before' => $entry->before(),
@@ -383,7 +583,7 @@ final class Abilities implements Service {
 		$data                = $entry->to_array();
 		$data['description'] = $this->registry->describe( $entry );
 
-		return $data;
+		return Access::can_view( $entry ) ? $data : Access::mask( $data );
 	}
 
 	/**

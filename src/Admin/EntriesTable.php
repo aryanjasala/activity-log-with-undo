@@ -7,7 +7,9 @@
 
 namespace AryanX\Axle\ActivityLogWithUndo\Admin;
 
+use AryanX\Axle\ActivityLogWithUndo\Access;
 use AryanX\Axle\ActivityLogWithUndo\Context;
+use AryanX\Axle\ActivityLogWithUndo\Rollback;
 use AryanX\Axle\ActivityLogWithUndo\Entry;
 use AryanX\Axle\ActivityLogWithUndo\Recorders\Registry;
 use AryanX\Axle\ActivityLogWithUndo\Store;
@@ -204,10 +206,21 @@ final class EntriesTable extends \WP_List_Table {
 	}
 
 	/**
-	 * Message when nothing matches.
+	 * Message when nothing matches: what will show up, and what to do next.
 	 */
 	public function no_items(): void {
-		esc_html_e( 'No changes logged yet. Change a setting, a post or a plugin and it shows up here.', 'activity-log-with-undo' );
+		$filtered = array_filter(
+			self::query_args(),
+			static function ( $value ) {
+				return '' !== $value;
+			}
+		);
+		if ( $filtered ) {
+			echo '<div class="axle-empty"><p>' . esc_html__( 'No logged change matches these filters.', 'activity-log-with-undo' ) . '</p><a class="button" href="' . esc_url( LogPage::url() ) . '">' . esc_html__( 'Clear the filters', 'activity-log-with-undo' ) . '</a></div>';
+			return;
+		}
+
+		echo '<div class="axle-empty"><p>' . esc_html__( 'Nothing is logged yet. Changes to settings, plugins, themes, users, content, terms, menus and the Site Editor show up here, with what they were before and an Undo button.', 'activity-log-with-undo' ) . '</p><a class="button" href="' . esc_url( admin_url( 'options-general.php' ) ) . '">' . esc_html__( 'Change a setting to try it', 'activity-log-with-undo' ) . '</a></div>';
 	}
 
 	/**
@@ -217,7 +230,7 @@ final class EntriesTable extends \WP_List_Table {
 	 * @return string
 	 */
 	protected function column_cb( $item ): string {
-		if ( ! $item->undoable || $item->is_undone() ) {
+		if ( ! $item->undoable || $item->is_undone() || ! Access::can_view( $item ) ) {
 			/* translators: %d: entry number. */
 			return '<span class="screen-reader-text">' . esc_html( sprintf( __( 'Change #%d cannot be selected for undo', 'activity-log-with-undo' ), $item->id ) ) . '</span>';
 		}
@@ -263,12 +276,38 @@ final class EntriesTable extends \WP_List_Table {
 			esc_url( LogPage::url( array( 'entry' => $item->id ) ) ),
 			esc_html( $this->registry->describe( $item ) ),
 			implode( ' <span aria-hidden="true">&middot;</span> ', $meta ),
-			$this->row_actions(
-				array(
-					'details' => sprintf( '<a href="%1$s">%2$s</a>', esc_url( LogPage::url( array( 'entry' => $item->id ) ) ), esc_html__( 'Details and differences', 'activity-log-with-undo' ) ),
-				)
-			)
+			$this->row_actions( $this->row_links( $item ) )
 		);
+	}
+
+	/**
+	 * Links under a row.
+	 *
+	 * @param Entry $item Entry.
+	 * @return array<string, string>
+	 */
+	private function row_links( Entry $item ): array {
+		$links = array(
+			'details' => sprintf( '<a href="%1$s">%2$s</a>', esc_url( LogPage::url( array( 'entry' => $item->id ) ) ), esc_html__( 'Details and differences', 'activity-log-with-undo' ) ),
+		);
+		if ( Rollback::allowed() && 'rollback' !== $item->event && Access::can_view( $item ) ) {
+			$links['rollback'] = sprintf(
+				'<a href="%1$s">%2$s</a>',
+				esc_url(
+					LogPage::url(
+						array(
+							'tab'       => 'rollback',
+							'rb_choice' => 'entry',
+							'rb_entry'  => $item->id,
+							'rb_go'     => 1,
+						)
+					)
+				),
+				esc_html__( 'Roll back to just before this', 'activity-log-with-undo' )
+			);
+		}
+
+		return $links;
 	}
 
 	/**
@@ -296,15 +335,7 @@ final class EntriesTable extends \WP_List_Table {
 	 * @return string
 	 */
 	protected function column_when( $item ): string {
-		$time = $item->timestamp();
-
-		return sprintf(
-			'<time datetime="%1$s" title="%2$s">%3$s</time>',
-			esc_attr( gmdate( 'c', $time ) ),
-			esc_attr( wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $time ) ),
-			/* translators: %s: time ago, e.g. "5 mins". */
-			esc_html( sprintf( __( '%s ago', 'activity-log-with-undo' ), human_time_diff( $time ) ) )
-		);
+		return AxleUi::relative_time( $item->timestamp() );
 	}
 
 	/**
@@ -321,6 +352,9 @@ final class EntriesTable extends \WP_List_Table {
 				/* translators: %d: entry number. */
 				esc_html( sprintf( __( 'Undone (#%d)', 'activity-log-with-undo' ), (int) $item->undone_by ) )
 			);
+		}
+		if ( ! Access::can_view( $item ) ) {
+			return '<span class="alu-status axle-badge axle-badge--neutral">' . esc_html__( 'Hidden', 'activity-log-with-undo' ) . '</span>';
 		}
 		if ( ! $item->undoable ) {
 			return '<span class="alu-status axle-badge axle-badge--neutral">' . esc_html__( 'Logged only', 'activity-log-with-undo' ) . '</span>';
@@ -351,18 +385,14 @@ final class EntriesTable extends \WP_List_Table {
 	}
 
 	/**
-	 * Filters above the table.
-	 *
-	 * @param string $which top or bottom.
+	 * Search and filters above the table.
 	 */
-	protected function extra_tablenav( $which ): void {
-		if ( 'top' !== $which ) {
-			return;
-		}
-
-		$events = $this->registry->events();
+	public function toolbar(): void {
 		?>
-		<div class="alignleft actions alu-filters">
+		<div class="axle-toolbar alu-filters" role="search" aria-label="<?php esc_attr_e( 'Search and filter the log', 'activity-log-with-undo' ); ?>">
+			<label class="screen-reader-text" for="alu-search"><?php esc_html_e( 'Search the log', 'activity-log-with-undo' ); ?></label>
+			<input type="search" id="alu-search" name="s" value="<?php echo esc_attr( self::filter( 's' ) ); ?>" placeholder="<?php esc_attr_e( 'Search the log', 'activity-log-with-undo' ); ?>">
+
 			<label class="screen-reader-text" for="alu-event"><?php esc_html_e( 'Event', 'activity-log-with-undo' ); ?></label>
 			<select name="alu_event" id="alu-event">
 				<option value=""><?php esc_html_e( 'All events', 'activity-log-with-undo' ); ?></option>
@@ -373,7 +403,7 @@ final class EntriesTable extends \WP_List_Table {
 						<?php endforeach; ?>
 					</optgroup>
 				<?php endforeach; ?>
-				<option value="undo" <?php selected( self::filter( 'alu_event' ), 'undo' ); ?>><?php echo esc_html( $events['undo'] ); ?></option>
+				<option value="undo" <?php selected( self::filter( 'alu_event' ), 'undo' ); ?>><?php esc_html_e( 'Undo', 'activity-log-with-undo' ); ?></option>
 			</select>
 
 			<label class="screen-reader-text" for="alu-user"><?php esc_html_e( 'User', 'activity-log-with-undo' ); ?></label>
@@ -402,7 +432,9 @@ final class EntriesTable extends \WP_List_Table {
 			<label class="screen-reader-text" for="alu-object"><?php esc_html_e( 'Object', 'activity-log-with-undo' ); ?></label>
 			<input type="text" name="alu_object" id="alu-object" class="alu-object" placeholder="<?php esc_attr_e( 'Object ID or name', 'activity-log-with-undo' ); ?>" value="<?php echo esc_attr( self::filter( 'alu_object' ) ); ?>">
 
-			<?php submit_button( __( 'Filter', 'activity-log-with-undo' ), '', 'filter_action', false, array( 'id' => 'alu-filter' ) ); ?>
+			<span class="axle-toolbar__end">
+				<?php submit_button( __( 'Filter', 'activity-log-with-undo' ), '', 'filter_action', false, array( 'id' => 'alu-filter' ) ); ?>
+			</span>
 		</div>
 		<?php
 	}

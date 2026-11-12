@@ -32,6 +32,12 @@ abstract class TestCase extends \PHPUnit\Framework\TestCase {
 		Functions\stubTranslationFunctions();
 		Functions\stubEscapeFunctions();
 
+		// A signed-in administrator, and no custom post types or taxonomies: Access lets everything through.
+		Functions\when( 'is_user_logged_in' )->justReturn( true );
+		Functions\when( 'current_user_can' )->justReturn( true );
+		Functions\when( 'post_type_exists' )->justReturn( false );
+		Functions\when( 'taxonomy_exists' )->justReturn( false );
+
 		$this->options     = array();
 		\WP_Query::$queue = array();
 		\WP_Query::$made  = array();

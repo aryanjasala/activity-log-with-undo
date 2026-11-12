@@ -11,6 +11,7 @@ use AryanX\Axle\ActivityLogWithUndo\Abilities;
 use AryanX\Axle\ActivityLogWithUndo\Cleanup;
 use AryanX\Axle\ActivityLogWithUndo\Recorders\Registry;
 use AryanX\Axle\ActivityLogWithUndo\Retention;
+use AryanX\Axle\ActivityLogWithUndo\Rollback;
 use AryanX\Axle\ActivityLogWithUndo\Settings;
 use AryanX\Axle\ActivityLogWithUndo\Store;
 use AryanX\Axle\ActivityLogWithUndo\Undoer;
@@ -72,6 +73,13 @@ final class Command {
 	private ?Cleanup $cleanup;
 
 	/**
+	 * Rolls the site back to a moment.
+	 *
+	 * @var Rollback|null
+	 */
+	private ?Rollback $rollback;
+
+	/**
 	 * Sets up the command.
 	 *
 	 * @param Store     $store     Entries.
@@ -81,8 +89,9 @@ final class Command {
 	 * @param Settings  $settings  Saved settings.
 	 * @param Abilities $abilities Entry details.
 	 * @param Cleanup   $cleanup   Deletes entries of options that are not logged any more.
+	 * @param Rollback  $rollback  Rolls the site back to a moment.
 	 */
-	public function __construct( Store $store, Registry $registry, Undoer $undoer, Retention $retention, Settings $settings, Abilities $abilities, ?Cleanup $cleanup = null ) {
+	public function __construct( Store $store, Registry $registry, Undoer $undoer, Retention $retention, Settings $settings, Abilities $abilities, ?Cleanup $cleanup = null, ?Rollback $rollback = null ) {
 		$this->store     = $store;
 		$this->registry  = $registry;
 		$this->undoer    = $undoer;
@@ -90,6 +99,30 @@ final class Command {
 		$this->settings  = $settings;
 		$this->abilities = $abilities;
 		$this->cleanup   = $cleanup;
+		$this->rollback  = $rollback;
+	}
+
+	/**
+	 * The user ID from --user, or '' for everyone.
+	 *
+	 * @param array $assoc_args Named arguments.
+	 * @return int|string
+	 */
+	private function user_filter( array $assoc_args ) {
+		if ( ! isset( $assoc_args['user'] ) ) {
+			return '';
+		}
+
+		$value = (string) $assoc_args['user'];
+		$found = is_numeric( $value ) ? get_userdata( (int) $value ) : get_user_by( 'login', $value );
+		if ( ! $found && ! is_numeric( $value ) ) {
+			$found = get_user_by( 'email', $value );
+		}
+		if ( ! $found ) {
+			\WP_CLI::error( 'No such user.' );
+		}
+
+		return $found->ID;
 	}
 
 	/**
@@ -150,14 +183,7 @@ final class Command {
 	 * @param array $assoc_args Named arguments.
 	 */
 	public function list_entries( array $args, array $assoc_args ): void {
-		$user = '';
-		if ( isset( $assoc_args['user'] ) ) {
-			$found = is_numeric( $assoc_args['user'] ) ? get_userdata( (int) $assoc_args['user'] ) : ( get_user_by( 'login', (string) $assoc_args['user'] ) ? get_user_by( 'login', (string) $assoc_args['user'] ) : get_user_by( 'email', (string) $assoc_args['user'] ) );
-			if ( ! $found ) {
-				\WP_CLI::error( 'No such user.' );
-			}
-			$user = $found->ID;
-		}
+		$user = $this->user_filter( $assoc_args );
 
 		$found  = $this->store->find(
 			array(
@@ -317,6 +343,106 @@ final class Command {
 	}
 
 	/**
+	 * Rolls the site back to a moment: undoes every change made since, newest first.
+	 *
+	 * Lists what would happen, asks, then undoes the changes in batches. The
+	 * roll back is logged as one entry; undo that entry to redo everything.
+	 * Changes that clash with a later change are skipped and listed, unless
+	 * --stop-on-conflict. Changes that cannot be undone stay as they are.
+	 *
+	 * ## OPTIONS
+	 *
+	 * --to=<time|id>
+	 * : The moment to go back to: a time in the site time zone ("2026-11-13 14:00", "2 hours ago", "yesterday 09:00"), or a log entry number to go back to just before that change.
+	 *
+	 * [--user=<user>]
+	 * : Only undo changes by this user: ID, login or email.
+	 *
+	 * [--area=<area>]
+	 * : Only undo changes of one area: options, plugins, themes, users, posts, terms, menus or site_editor.
+	 *
+	 * [--stop-on-conflict]
+	 * : Stop at the first change that clashes with a later one. Default: skip it and carry on.
+	 *
+	 * [--dry-run]
+	 * : List what would be undone, and stop.
+	 *
+	 * [--yes]
+	 * : Do not ask first.
+	 *
+	 * [--format=<format>]
+	 * : table, csv, json or yaml for the list.
+	 * ---
+	 * default: table
+	 * ---
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     wp activity-log-with-undo rollback --to="2026-11-13 14:00" --dry-run
+	 *     wp activity-log-with-undo rollback --to=1234 --user=editor --yes
+	 *
+	 * @param array $args       Positional arguments.
+	 * @param array $assoc_args Named arguments.
+	 */
+	public function rollback( array $args, array $assoc_args ): void {
+		if ( ! $this->rollback ) {
+			\WP_CLI::error( 'Roll backs are not available.' );
+		}
+
+		$plan = $this->rollback->plan(
+			array(
+				'to'   => (string) ( $assoc_args['to'] ?? '' ),
+				'user' => $this->user_filter( $assoc_args ),
+				'area' => (string) ( $assoc_args['area'] ?? '' ),
+			)
+		);
+		if ( $plan instanceof \WP_Error ) {
+			\WP_CLI::error( $plan->get_error_message() );
+		}
+
+		$rows = array();
+		foreach ( $plan['items'] as $item ) {
+			$rows[] = array(
+				'id'          => $item['entry']->id,
+				'created'     => gmdate( 'c', $item['entry']->timestamp() ),
+				'status'      => $item['status'],
+				'description' => $this->registry->describe( $item['entry'] ),
+				'reason'      => $item['reason'],
+			);
+		}
+		if ( $rows ) {
+			\WP_CLI\Utils\format_items( (string) ( $assoc_args['format'] ?? 'table' ), $rows, array( 'id', 'created', 'status', 'description', 'reason' ) );
+		}
+
+		$counts = $plan['counts'];
+		\WP_CLI::line( sprintf( '%d to undo, %d that cannot be undone, %d that clash with a later change.', $counts['will'], $counts['blocked'], $counts['conflict'] ) );
+		if ( $plan['truncated'] ) {
+			\WP_CLI::warning( 'There are more changes since then than the preview reads. Pick a later time to see the rest.' );
+		}
+		if ( $plan['deferred'] ) {
+			\WP_CLI::warning( sprintf( 'One run undoes the newest changes first and stops at a safe size. %d change(s) are left for the next run.', $plan['deferred'] ) );
+		}
+		if ( \WP_CLI\Utils\get_flag_value( $assoc_args, 'dry-run', false ) ) {
+			return;
+		}
+		if ( ! $plan['runs'] ) {
+			\WP_CLI::success( 'There is nothing to undo since then.' );
+			return;
+		}
+
+		\WP_CLI::confirm( sprintf( 'Undo %d change(s)?', $counts['will'] ), $assoc_args );
+		$state = $this->rollback->run( $plan, (bool) \WP_CLI\Utils\get_flag_value( $assoc_args, 'stop-on-conflict', false ) );
+		if ( $state instanceof \WP_Error ) {
+			\WP_CLI::error( $state->get_error_message() );
+		}
+
+		foreach ( $state['skipped'] as $item ) {
+			\WP_CLI::warning( sprintf( '#%d was left as it is: %s', $item['id'], $item['reason'] ) );
+		}
+		\WP_CLI::success( Rollback::message( $state ) . ( $state['summary'] ? sprintf( ' Logged as #%d: undo it to redo everything.', $state['summary'] ) : '' ) );
+	}
+
+	/**
 	 * Deletes old entries.
 	 *
 	 * ## OPTIONS
@@ -457,7 +583,7 @@ final class Command {
 			$new['admin_bar'] = in_array( strtolower( (string) $assoc_args['admin-bar'] ), array( 'on', '1', 'yes', 'true' ), true );
 		}
 		if ( isset( $assoc_args['enable'] ) || isset( $assoc_args['disable'] ) ) {
-			$known    = array_keys( $this->registry->all() );
+			$known    = array_keys( $this->registry->configurable() );
 			$enable   = array_filter( array_map( 'trim', explode( ',', (string) ( $assoc_args['enable'] ?? '' ) ) ) );
 			$disable  = array_filter( array_map( 'trim', explode( ',', (string) ( $assoc_args['disable'] ?? '' ) ) ) );
 			$unknown  = array_diff( array_merge( $enable, $disable ), $known );
@@ -474,7 +600,7 @@ final class Command {
 		}
 
 		$row = array(
-			'recorders_on'   => implode( ',', array_diff( array_keys( $this->registry->all() ), (array) $settings['disabled'] ) ),
+			'recorders_on'   => implode( ',', array_diff( array_keys( $this->registry->configurable() ), (array) $settings['disabled'] ) ),
 			'recorders_off'  => implode( ',', (array) $settings['disabled'] ),
 			'retention_days' => $settings['retention_days'],
 			'ip'             => $settings['ip'],

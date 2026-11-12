@@ -13,12 +13,20 @@ use AryanX\Axle\ActivityLogWithUndo\Admin\LogPage;
 use AryanX\Axle\ActivityLogWithUndo\Recorders\PluginsRecorder;
 use AryanX\Axle\ActivityLogWithUndo\Recorders\Registry;
 use AryanX\Axle\ActivityLogWithUndo\Recorders\ThemesRecorder;
+use AryanX\Axle\ActivityLogWithUndo\Rollback;
 use AryanX\Axle\ActivityLogWithUndo\Settings;
 use AryanX\Axle\ActivityLogWithUndo\Undoer;
 use Brain\Monkey\Filters;
 use Brain\Monkey\Functions;
 
 final class AdminAbilitiesTest extends LogTestCase {
+
+	private function abilities( Registry $registry ): Abilities {
+		$logger = $this->logger();
+		$undoer = new Undoer( $this->store, $logger, $registry );
+
+		return new Abilities( $this->store, $registry, $undoer, new Rollback( $this->store, $logger, $undoer, $registry ) );
+	}
 
 	public function test_the_capability_filter_decides_who_sees_the_log_and_falls_back_when_empty(): void {
 		$this->assertSame( 'manage_options', LogPage::capability() );
@@ -53,7 +61,7 @@ final class AdminAbilitiesTest extends LogTestCase {
 			)
 		);
 		$registry  = new Registry( array( new FakeRecorder() ), new Settings() );
-		$abilities = new Abilities( $this->store, $registry, new Undoer( $this->store, $this->logger(), $registry ) );
+		$abilities = $this->abilities( $registry );
 
 		$list = $abilities->list_activity(
 			array(
@@ -70,7 +78,7 @@ final class AdminAbilitiesTest extends LogTestCase {
 
 	public function test_abilities_only_register_when_wordpress_has_the_api(): void {
 		$registry = new Registry( array(), new Settings() );
-		( new Abilities( $this->store, $registry, new Undoer( $this->store, $this->logger(), $registry ) ) )->register();
+		$this->abilities( $registry )->register();
 
 		$this->assertFalse( has_action( 'wp_abilities_api_init' ) );
 	}

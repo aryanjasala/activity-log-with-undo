@@ -11,6 +11,7 @@ use AryanX\Axle\ActivityLogWithUndo\Admin\LogPage;
 use AryanX\Axle\ActivityLogWithUndo\Cleanup;
 use AryanX\Axle\ActivityLogWithUndo\Logger;
 use AryanX\Axle\ActivityLogWithUndo\Retention;
+use AryanX\Axle\ActivityLogWithUndo\Rollback;
 use AryanX\Axle\ActivityLogWithUndo\Schema;
 use AryanX\Axle\ActivityLogWithUndo\Service;
 use AryanX\Axle\ActivityLogWithUndo\Settings;
@@ -40,14 +41,23 @@ final class SiteHealth implements Service {
 	private ?Store $store;
 
 	/**
+	 * Roll backs, to spot one that never finished.
+	 *
+	 * @var Rollback|null
+	 */
+	private ?Rollback $rollback;
+
+	/**
 	 * Sets up the check.
 	 *
-	 * @param Settings   $settings Saved settings.
-	 * @param Store|null $store    Entries, for the size of the log.
+	 * @param Settings      $settings Saved settings.
+	 * @param Store|null    $store    Entries, for the size of the log.
+	 * @param Rollback|null $rollback Roll backs.
 	 */
-	public function __construct( Settings $settings, ?Store $store = null ) {
+	public function __construct( Settings $settings, ?Store $store = null, ?Rollback $rollback = null ) {
 		$this->settings = $settings;
 		$this->store    = $store;
+		$this->rollback = $rollback;
 	}
 
 	/**
@@ -94,6 +104,16 @@ final class SiteHealth implements Service {
 				/* translators: 1: size of the log, 2: its limit. */
 				sprintf( __( 'The log takes %1$s, over its limit of %2$s. New changes are logged without their old values, so they cannot be undone. Delete old entries on the Settings tab, or keep fewer days.', 'activity-log-with-undo' ), size_format( $size, 1 ), size_format( $max ) ),
 				$action
+			);
+		}
+
+		$job = $this->rollback ? $this->rollback->job() : null;
+		if ( $job && Rollback::is_stale( $job ) ) {
+			return $this->result(
+				'recommended',
+				__( 'A roll back did not finish', 'activity-log-with-undo' ),
+				__( 'A roll back started, but nothing has happened for over an hour. Some changes were undone and some were not. Open the Roll back tab to continue it or cancel it.', 'activity-log-with-undo' ),
+				sprintf( '<p><a href="%s">%s</a></p>', esc_url( admin_url( 'tools.php?page=' . LogPage::SLUG . '&tab=rollback' ) ), esc_html__( 'Open the roll back', 'activity-log-with-undo' ) )
 			);
 		}
 

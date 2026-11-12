@@ -111,8 +111,9 @@ class Store {
 	/**
 	 * Entries matching filters, newest first, with the total count.
 	 *
-	 * @param array $args event, object_type, object_id, object (ID or name, partial), user, via,
-	 *                    since and until (UTC `Y-m-d H:i:s`), search, change_set, undoable, per_page, page, order.
+	 * @param array $args event, recorder, object_type, object_id, object (ID or name, partial), user, via,
+	 *                    since and until (UTC `Y-m-d H:i:s`), min_id (entries from this ID on), search,
+	 *                    change_set, undoable, per_page, page, order.
 	 * @return array{entries: Entry[], total: int}
 	 */
 	public function find( array $args = array() ): array {
@@ -172,6 +173,18 @@ class Store {
 				'order'      => 'ASC',
 			)
 		)['entries'];
+	}
+
+	/**
+	 * The ID of the first entry in a change set.
+	 *
+	 * @param string $change_set Change set ID.
+	 * @return int 0 when the set is unknown.
+	 */
+	public function first_in_set( string $change_set ): int {
+		$entries = $this->change_set( $change_set );
+
+		return $entries ? $entries[0]->id : 0;
 	}
 
 	/**
@@ -265,6 +278,19 @@ class Store {
 		$this->bump();
 
 		return $deleted;
+	}
+
+	/**
+	 * How many entries are older than a date, for the preview before a clean-up.
+	 *
+	 * @param string $cutoff UTC `Y-m-d H:i:s`.
+	 * @return int
+	 */
+	public function count_before( string $cutoff ): int {
+		global $wpdb;
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- A count on the plugin's own table, run once when the settings screen opens.
+		return (int) $wpdb->get_var( $wpdb->prepare( 'SELECT COUNT(*) FROM %i WHERE created_gmt < %s', Schema::table(), $cutoff ) );
 	}
 
 	/**
@@ -420,6 +446,7 @@ class Store {
 			'object_type',
 			'object_id',
 			'change_set',
+			'recorder',
 			'actor_via' => 'via',
 		) as $column => $arg ) {
 			$column = is_int( $column ) ? $arg : $column;
@@ -440,6 +467,10 @@ class Store {
 		if ( ! empty( $args['until'] ) ) {
 			$where[]  = 'created_gmt <= %s';
 			$values[] = (string) $args['until'];
+		}
+		if ( ! empty( $args['min_id'] ) ) {
+			$where[]  = 'id >= %d';
+			$values[] = (int) $args['min_id'];
 		}
 		if ( ! empty( $args['undoable'] ) ) {
 			$where[] = 'undoable = 1 AND undone_by IS NULL';

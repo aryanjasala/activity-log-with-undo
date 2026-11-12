@@ -37,12 +37,22 @@ const entries = () => JSON.parse( wp( 'activity-log-with-undo', 'list', '--forma
 const latest = ( event ) => entries().find( ( entry ) => entry.event === event );
 const option = ( name ) => wp( 'option', 'get', name );
 
-// Clicks Undo (or Redo) for an entry on the log screen and waits for the result.
+// Presses the button that confirms in place (a browser dialog would be a bug).
+async function confirmInPlace( page ) {
+	const panel = page.locator( '.alu-ask' );
+	await expect( panel ).toBeVisible();
+	await panel.locator( '.axle-actions button' ).first().click();
+}
+
+// Clicks Undo (or Redo) for an entry on the log screen, confirms it in place and waits for the result.
 async function undoOnScreen( page, id, notice = /Undid 1 change/ ) {
 	await page.goto( PAGE );
 	await page.locator( `a.alu-undo[data-alu-entry="${ id }"]` ).click();
+	await confirmInPlace( page );
 	await expect( page.locator( '.alu-notice' ).first() ).toContainText( notice );
 }
+
+const dialogs = [];
 
 test.describe( 'Activity Log with Undo', () => {
 	test.beforeAll( () => {
@@ -56,7 +66,16 @@ test.describe( 'Activity Log with Undo', () => {
 		// Known starting values for the options the tests change.
 		wpEval( `update_option( 'blogname', 'E2E' ); update_option( 'blogdescription', 'Just another site' ); update_option( 'posts_per_page', 10 );` );
 		reset();
-		page.on( 'dialog', ( dialog ) => dialog.accept() );
+		// Nothing here asks with a browser dialog: it is dismissed and the test fails after.
+		dialogs.length = 0;
+		page.on( 'dialog', ( dialog ) => {
+			dialogs.push( dialog.message() );
+			dialog.dismiss();
+		} );
+	} );
+
+	test.afterEach( () => {
+		expect( dialogs, 'a browser dialog opened' ).toEqual( [] );
 	} );
 
 	test.afterAll( () => {
@@ -95,12 +114,15 @@ test.describe( 'Activity Log with Undo', () => {
 
 		await page.goto( PAGE );
 		await page.locator( `a.alu-undo[data-alu-entry="${ first.id }"]` ).click();
+		await confirmInPlace( page );
 		await expect( page ).toHaveURL( new RegExp( `entry=${ first.id }` ) );
 		await expect( page.locator( '.alu-conflict' ) ).toContainText( 'Changed since' );
-		await expect( page.locator( '.alu-diff-table' ).last() ).toContainText( 'Summer menu' );
+		await expect( page.locator( '.axle-card--danger .axle-diff' ).last() ).toContainText( 'Summer menu' );
 		expect( option( 'blogname' ) ).toBe( 'Summer menu' );
 
 		await page.getByRole( 'link', { name: 'Undo anyway' } ).click();
+		await expect( page.locator( '.alu-ask' ) ).toContainText( 'overwrites what changed since' );
+		await confirmInPlace( page );
 		await expect( page.locator( '.alu-notice' ).first() ).toContainText( 'overwriting what changed since' );
 		expect( option( 'blogname' ) ).toBe( 'E2E' );
 	} );
@@ -242,19 +264,18 @@ test.describe( 'Activity Log with Undo', () => {
 		expect( set ).toHaveLength( 3 );
 		expect( new Set( set.map( ( entry ) => entry.change_set ) ).size ).toBe( 1 );
 
-		const messages = [];
-		page.removeAllListeners( 'dialog' );
-		page.on( 'dialog', ( dialog ) => {
-			messages.push( dialog.message() );
-			dialog.accept();
-		} );
 		await page.goto( PAGE );
 		await expect( page.locator( 'tr', { has: page.locator( `#alu-entry-${ set[ 0 ].id }` ) } ) ).toContainText( 'Saved with 2 other changes' );
-		await undoOnScreen( page, set[ 1 ].id, /Undid 3 changes/ );
-		// The question names what else the undo reverses.
-		expect( messages[ 0 ] ).toContain( 'Undo this change? It also undoes 2 other changes saved with it:' );
-		expect( messages[ 0 ] ).toContain( 'Changed Site title' );
-		expect( messages[ 0 ] ).toContain( 'Changed Blog pages show at most' );
+		await page.locator( `a.alu-undo[data-alu-entry="${ set[ 1 ].id }"]` ).click();
+		// The confirm step names what else the undo reverses, and that the undo can be redone.
+		const panel = page.locator( '.alu-ask' );
+		await expect( panel ).toContainText( 'It also undoes 2 other changes saved with it:' );
+		await expect( panel ).toContainText( 'Changed Site title' );
+		await expect( panel ).toContainText( 'Changed Blog pages show at most' );
+		await expect( panel ).toContainText( 'you can redo it from the log' );
+		await confirmInPlace( page );
+		await expect( page.locator( '.alu-notice' ).first() ).toContainText( /Undid 3 changes/ );
+		await expect( page.locator( '.alu-notice a.alu-notice-link' ) ).toHaveText( 'Redo' );
 
 		expect( option( 'blogname' ) ).toBe( 'E2E' );
 		expect( option( 'posts_per_page' ) ).toBe( '10' );
@@ -271,6 +292,8 @@ test.describe( 'Activity Log with Undo', () => {
 		await page.locator( `#alu-entry-${ second.id }` ).check();
 		await page.locator( '#bulk-action-selector-top' ).selectOption( 'undo' );
 		await page.locator( '#doaction' ).click();
+		await expect( page.locator( '.alu-ask' ) ).toContainText( 'This undoes 2 selected changes' );
+		await confirmInPlace( page );
 		await expect( page.locator( '.alu-notice' ).first() ).toContainText( 'Undid 2 changes' );
 
 		expect( option( 'blogname' ) ).toBe( 'E2E' );
@@ -292,11 +315,11 @@ test.describe( 'Activity Log with Undo', () => {
 		await expect( page.locator( '#the-list' ) ).toContainText( 'Changed Site title' );
 
 		await page.goto( `${ PAGE }&alu_via=rest` );
-		await expect( page.locator( '#the-list' ) ).toContainText( 'No changes logged yet' );
+		await expect( page.locator( '#the-list' ) ).toContainText( 'No logged change matches these filters' );
 
 		await page.goto( PAGE );
 		await page.locator( '#the-list .row-title', { hasText: 'Changed Site title' } ).click();
-		await expect( page.locator( '.alu-diff-table' ) ).toContainText( 'Filter me' );
+		await expect( page.locator( '.axle-diff' ) ).toContainText( 'Filter me' );
 		await expect( page.locator( '.alu-facts' ) ).toContainText( 'WP-CLI' );
 		wp( 'post', 'delete', postId, '--force' );
 	} );
@@ -304,22 +327,16 @@ test.describe( 'Activity Log with Undo', () => {
 	test( 'the JavaScript hooks can change the question and see the result', async ( { page } ) => {
 		wp( 'option', 'update', 'blogname', 'Hooked' );
 		const entry = latest( 'option_updated' );
-		const messages = [];
-		page.removeAllListeners( 'dialog' );
-		page.on( 'dialog', ( dialog ) => {
-			messages.push( dialog.message() );
-			dialog.accept();
-		} );
-
 		await page.goto( PAGE );
 		await page.evaluate( () => {
 			window.wp.hooks.addFilter( 'activityLogWithUndo.confirmMessage', 'e2e', ( message, context ) => `Sure? #${ context.entryId } ${ message }` );
 			window.wp.hooks.addAction( 'activityLogWithUndo.undone', 'e2e', ( result ) => sessionStorage.setItem( 'alu-undone', JSON.stringify( result.undone ) ) );
 		} );
 		await page.locator( `a.alu-undo[data-alu-entry="${ entry.id }"]` ).click();
+		await expect( page.locator( '.alu-ask' ) ).toContainText( `Sure? #${ entry.id } This puts the old value back.` );
+		await confirmInPlace( page );
 		await expect( page.locator( '.alu-notice' ).first() ).toContainText( 'Undid 1 change' );
 
-		expect( messages ).toEqual( [ `Sure? #${ entry.id } Undo this change?` ] );
 		expect( await page.evaluate( () => sessionStorage.getItem( 'alu-undone' ) ) ).toBe( JSON.stringify( [ entry.id ] ) );
 		expect( option( 'blogname' ) ).toBe( 'E2E' );
 	} );
@@ -352,15 +369,13 @@ test.describe( 'Activity Log with Undo', () => {
 		const entry = latest( 'user_created' );
 		expect( entry ).toMatchObject( { object_id: String( ids[ 0 ] ), user: 'admin' } );
 
-		const messages = [];
-		page.removeAllListeners( 'dialog' );
-		page.on( 'dialog', ( dialog ) => {
-			messages.push( dialog.message() );
-			dialog.accept();
-		} );
-		await undoOnScreen( page, entry.id, /Undid/ );
+		await page.goto( PAGE );
+		await page.locator( `a.alu-undo[data-alu-entry="${ entry.id }"]` ).click();
+		await expect( page.locator( '.alu-ask' ) ).toContainText( 'This deletes the user temp' );
+		await expect( page.locator( '.alu-ask' ) ).toContainText( 'cannot be brought back with Redo' );
+		await confirmInPlace( page );
+		await expect( page.locator( '.alu-notice' ).first() ).toContainText( /Undid/ );
 
-		expect( messages[ 0 ] ).toContain( 'This deletes the user temp' );
 		expect( wpEval( `echo get_userdata( ${ ids[ 0 ] } ) ? 'exists' : 'gone';` ) ).toBe( 'gone' );
 		expect( wp( 'post', 'get', String( ids[ 1 ] ), '--field=post_author' ) ).toBe( '1' );
 		wp( 'post', 'delete', String( ids[ 1 ] ), '--force' );
@@ -561,6 +576,7 @@ test.describe( 'Activity Log with Undo', () => {
 		await page.evaluate( () => window.wp.hooks.addAction( 'activityLogWithUndo.undoFailed', 'e2e', ( error, context ) => sessionStorage.setItem( 'alu-failed', `${ error.code } ${ context.entryId }` ) ) );
 		const link = page.locator( `a.alu-undo[data-alu-entry="${ entry.id }"]` );
 		await link.click();
+		await confirmInPlace( page );
 		await expect( page.locator( '.alu-undo-error' ) ).toContainText( 'This site is frozen for the test. Try again later.' );
 		await expect( page ).toHaveURL( /page=activity-log-with-undo$/ );
 		await expect( link ).not.toHaveAttribute( 'aria-disabled', 'true' );
@@ -571,6 +587,7 @@ test.describe( 'Activity Log with Undo', () => {
 		// Once writes are allowed again, the same link works.
 		wp( 'option', 'delete', 'alu_e2e_freeze' );
 		await link.click();
+		await confirmInPlace( page );
 		await expect( page.locator( '.alu-notice' ).first() ).toContainText( 'Undid 1 change' );
 		expect( option( 'blogname' ) ).toBe( 'E2E' );
 	} );
@@ -665,7 +682,7 @@ test.describe( 'Activity Log with Undo', () => {
 		};
 
 		const listed = await rest( 'GET', '/wp-abilities/v1/abilities?category=activity-log-with-undo' );
-		expect( listed.body.map( ( ability ) => ability.name ).sort() ).toEqual( [ 'activity-log-with-undo/get-entry', 'activity-log-with-undo/list-activity', 'activity-log-with-undo/undo-change' ] );
+		expect( listed.body.map( ( ability ) => ability.name ).sort() ).toEqual( [ 'activity-log-with-undo/get-entry', 'activity-log-with-undo/list-activity', 'activity-log-with-undo/preview-rollback', 'activity-log-with-undo/run-rollback', 'activity-log-with-undo/undo-change' ] );
 		expect( listed.body.find( ( ability ) => ability.name.endsWith( 'undo-change' ) ).meta.annotations ).toMatchObject( { destructive: true, readonly: false } );
 		// MCP clients only list abilities marked public.
 		expect( JSON.parse( wpEval( `echo wp_json_encode( array_values( array_filter( array_map( function ( $ability ) { $meta = $ability->get_meta(); return ( ! empty( $meta['public'] ) && ! empty( $meta['mcp']['public'] ) ) ? '' : $ability->get_name(); }, wp_get_abilities() ), function ( $name ) { return 0 === strpos( $name, 'activity-log-with-undo/' ); } ) ) );` ) ) ).toEqual( [] );

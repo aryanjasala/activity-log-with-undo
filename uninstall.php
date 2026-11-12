@@ -19,8 +19,12 @@ function activity_log_with_undo_uninstall_site(): void {
 	delete_option( 'activity_log_with_undo_settings' );
 	delete_option( 'activity_log_with_undo_db_version' );
 	delete_option( 'activity_log_with_undo_cleanup' );
+	delete_option( 'activity_log_with_undo_rollback_job' );
+	delete_option( 'activity_log_with_undo_rollback_lock' );
 	wp_unschedule_hook( 'activity_log_with_undo_purge' );
 	wp_unschedule_hook( 'activity_log_with_undo_cleanup' );
+	// The "Get started" card's dismissal, kept per user.
+	delete_metadata( 'user', 0, 'activity_log_with_undo_steps_dismissed', '', true );
 
 	// One-time notices waiting for users, rate-limit counters and the cached table size.
 	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- One-off cleanup on uninstall.
