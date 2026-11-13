@@ -48,6 +48,14 @@ The preview lists every change since then, newest first, grouped by area. Each o
 
 The log can be opened by people who cannot edit everything in it. An entry about a post, term, user or setting you are not allowed to edit shows as a hidden change, without its name, values or IP address, in the log, the REST API, the abilities and WP-CLI. You cannot undo it either.
 
+= Alerts and a daily digest =
+
+Hear about the changes that matter, with a link to the entry in the message. Open Tools > Activity Log > Alerts and add a rule: pick the events (or any change), narrow it by area, by who made it or their role, and optionally to changes made outside working hours. Six starter rules are offered, all off until you turn them on: a new administrator, a plugin deactivated or deleted, the theme switched, the site address changed, anyone can register turned on, and the default role changed.
+
+Send email, a webhook, or both. The webhook gets JSON, or the Slack format that many chat tools accept. Send right away or as one digest a day. A bulk change is one message, and a rule that just sent waits a few minutes before it sends the next one. Every rule has a Send a test button.
+
+Each message says who changed what, with the old and new value. Undo happens on the site after you sign in: there is no undo link in an email or a webhook. The webhook URL is a secret. It is never shown again after you save it, and the abilities and WP-CLI never return it. Each person only reads about what they may edit. Anything else shows as a change they are not allowed to see.
+
 = Find a change =
 
 Tools > Activity Log lists every change with who made it and how: the dashboard, the REST API or block editor, an application password, WP-CLI, a scheduled task, XML-RPC or an AI agent through the Abilities API. Filter by event, user, source, dates and object, or search. Select several rows to undo them in one go.
@@ -64,16 +72,22 @@ Turn on "Undo last change" in the admin bar to undo your own most recent change 
 `wp activity-log-with-undo purge --older-than=30`
 `wp activity-log-with-undo cleanup --dry-run`
 `wp activity-log-with-undo settings --retention-days=30 --ip=off`
+`wp activity-log-with-undo alerts add "Plugin removed" --starter=plugin-removed --enable`
+`wp activity-log-with-undo alerts test <id>`
 
 = For AI agents =
 
-On WordPress 6.9 and later, five abilities let an agent list the activity, read one change with its before and after state, undo it, preview a roll back to a moment (read-only) and run it. Undo refuses when things changed since, unless the agent passes `force`.
+On WordPress 6.9 and later, eight abilities let an agent list the activity, read one change with its before and after state, undo it, preview a roll back to a moment (read-only) and run it, list the alert rules, turn one on or off and send a test alert. None of them returns a webhook URL. Undo refuses when things changed since, unless the agent passes `force`.
 
 With Agent Governance active, a change an agent made after someone approved its request says which agent it was, the request number, and who approved it.
 
+= External services =
+
+Only if you add a webhook to an alert rule. Then the site sends a short JSON message about a change (who, what, the old and new value, a link to the entry) to the URL you chose, for example a Slack, Mattermost or Discord incoming webhook, or your own service. Nothing is sent until you add a webhook, and the plugin never chooses one for you. The service you pick has its own terms and privacy policy.
+
 = Privacy =
 
-Entries are kept for 90 days by default. IP addresses are shortened by default, and can be kept in full or not at all. The log takes part in the WordPress personal data export and erase tools: erasing keeps the change history and removes the person from it.
+Entries are kept for 90 days by default. IP addresses are shortened by default, and can be kept in full or not at all. The log takes part in the WordPress personal data export and erase tools: erasing keeps the change history and removes the person from it. Alert rules keep the email addresses that get alerts. They are exported and erased the same way.
 
 == Frequently Asked Questions ==
 
@@ -92,6 +106,14 @@ Yes, to a moment you pick, for everything the log can undo. Changes that cannot 
 = Does it log changes made with WP-CLI? =
 
 Yes, and the source shows as WP-CLI. Every WP-CLI command is its own change set.
+
+= Can an alert undo a change from the email? =
+
+No, on purpose. A link that undoes a change when you click it can be clicked by a mail scanner, or forwarded. The message links to the entry in the log. You sign in and press Undo there.
+
+= Who gets told about a change to something they may not edit? =
+
+Nobody. Each address gets its own message, and what it says is cut down to what that person may edit. A person who may not edit the object reads "A change to something you are not allowed to see", with only who made it and when.
 
 = Will it fill up my database? =
 

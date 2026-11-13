@@ -682,7 +682,7 @@ test.describe( 'Activity Log with Undo', () => {
 		};
 
 		const listed = await rest( 'GET', '/wp-abilities/v1/abilities?category=activity-log-with-undo' );
-		expect( listed.body.map( ( ability ) => ability.name ).sort() ).toEqual( [ 'activity-log-with-undo/get-entry', 'activity-log-with-undo/list-activity', 'activity-log-with-undo/preview-rollback', 'activity-log-with-undo/run-rollback', 'activity-log-with-undo/undo-change' ] );
+		expect( listed.body.map( ( ability ) => ability.name ).sort() ).toEqual( [ 'activity-log-with-undo/get-entry', 'activity-log-with-undo/list-activity', 'activity-log-with-undo/list-alert-rules', 'activity-log-with-undo/preview-rollback', 'activity-log-with-undo/run-rollback', 'activity-log-with-undo/send-test-alert', 'activity-log-with-undo/set-alert-enabled', 'activity-log-with-undo/undo-change' ] );
 		expect( listed.body.find( ( ability ) => ability.name.endsWith( 'undo-change' ) ).meta.annotations ).toMatchObject( { destructive: true, readonly: false } );
 		// MCP clients only list abilities marked public.
 		expect( JSON.parse( wpEval( `echo wp_json_encode( array_values( array_filter( array_map( function ( $ability ) { $meta = $ability->get_meta(); return ( ! empty( $meta['public'] ) && ! empty( $meta['mcp']['public'] ) ) ? '' : $ability->get_name(); }, wp_get_abilities() ), function ( $name ) { return 0 === strpos( $name, 'activity-log-with-undo/' ); } ) ) );` ) ) ).toEqual( [] );

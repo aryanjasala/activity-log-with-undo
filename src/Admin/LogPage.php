@@ -83,22 +83,31 @@ final class LogPage implements Service {
 	private Rollback $rollback;
 
 	/**
+	 * The Alerts tab.
+	 *
+	 * @var AlertsScreen|null
+	 */
+	private ?AlertsScreen $alerts;
+
+	/**
 	 * Sets up the screen.
 	 *
-	 * @param Store     $store     Entries.
-	 * @param Registry  $registry  Recorders.
-	 * @param Undoer    $undoer    Reverses changes.
-	 * @param Settings  $settings  Saved settings.
-	 * @param Retention $retention Deletes old entries.
-	 * @param Rollback  $rollback  Rolls the site back to a moment.
+	 * @param Store             $store     Entries.
+	 * @param Registry          $registry  Recorders.
+	 * @param Undoer            $undoer    Reverses changes.
+	 * @param Settings          $settings  Saved settings.
+	 * @param Retention         $retention Deletes old entries.
+	 * @param Rollback          $rollback  Rolls the site back to a moment.
+	 * @param AlertsScreen|null $alerts The Alerts tab.
 	 */
-	public function __construct( Store $store, Registry $registry, Undoer $undoer, Settings $settings, Retention $retention, Rollback $rollback ) {
+	public function __construct( Store $store, Registry $registry, Undoer $undoer, Settings $settings, Retention $retention, Rollback $rollback, ?AlertsScreen $alerts = null ) {
 		$this->store     = $store;
 		$this->registry  = $registry;
 		$this->undoer    = $undoer;
 		$this->settings  = $settings;
 		$this->retention = $retention;
 		$this->rollback  = $rollback;
+		$this->alerts    = $alerts;
 	}
 
 	/**
@@ -447,6 +456,8 @@ final class LogPage implements Service {
 				'title'   => __( 'Run and redo a roll back', 'activity-log-with-undo' ),
 				'content' => '<p>' . esc_html__( 'A roll back undoes the changes in small groups, newest first, and shows its progress. It is logged as one entry. Use Redo on that entry to put everything back.', 'activity-log-with-undo' ) . '</p>',
 			);
+		} elseif ( 'alerts' === $tab ) {
+			$tabs = array_merge( $tabs, AlertsScreen::help() );
 		} elseif ( 'settings' === $tab ) {
 			$tabs[] = array(
 				'id'      => 'settings',
@@ -803,7 +814,7 @@ final class LogPage implements Service {
 		$entry_id = isset( $_GET['entry'] ) && ! is_array( $_GET['entry'] ) ? absint( $_GET['entry'] ) : 0;
 		$tab      = isset( $_GET['tab'] ) ? sanitize_key( wp_unslash( $_GET['tab'] ) ) : 'log';
 		// phpcs:enable
-		$tab = in_array( $tab, array( 'rollback', 'settings' ), true ) ? $tab : 'log';
+		$tab = in_array( $tab, array( 'rollback', 'alerts', 'settings' ), true ) ? $tab : 'log';
 		?>
 		<div class="wrap axle-ui alu-page">
 			<h1 class="wp-heading-inline"><?php esc_html_e( 'Activity Log', 'activity-log-with-undo' ); ?></h1>
@@ -814,6 +825,7 @@ final class LogPage implements Service {
 			<nav class="nav-tab-wrapper" aria-label="<?php esc_attr_e( 'Activity log sections', 'activity-log-with-undo' ); ?>">
 				<a href="<?php echo esc_url( self::url() ); ?>" class="nav-tab <?php echo 'log' === $tab ? 'nav-tab-active' : ''; ?>"<?php echo 'log' === $tab ? ' aria-current="page"' : ''; ?>><?php esc_html_e( 'Log', 'activity-log-with-undo' ); ?></a>
 				<a href="<?php echo esc_url( self::url( array( 'tab' => 'rollback' ) ) ); ?>" class="nav-tab <?php echo 'rollback' === $tab ? 'nav-tab-active' : ''; ?>"<?php echo 'rollback' === $tab ? ' aria-current="page"' : ''; ?>><?php esc_html_e( 'Roll back', 'activity-log-with-undo' ); ?></a>
+				<a href="<?php echo esc_url( self::url( array( 'tab' => 'alerts' ) ) ); ?>" class="nav-tab <?php echo 'alerts' === $tab ? 'nav-tab-active' : ''; ?>"<?php echo 'alerts' === $tab ? ' aria-current="page"' : ''; ?>><?php esc_html_e( 'Alerts', 'activity-log-with-undo' ); ?></a>
 				<a href="<?php echo esc_url( self::url( array( 'tab' => 'settings' ) ) ); ?>" class="nav-tab <?php echo 'settings' === $tab ? 'nav-tab-active' : ''; ?>"<?php echo 'settings' === $tab ? ' aria-current="page"' : ''; ?>><?php esc_html_e( 'Settings', 'activity-log-with-undo' ); ?></a>
 			</nav>
 			<p class="axle-intro"><?php esc_html_e( 'Every change to settings, plugins, themes, users, content, terms, menus and the Site Editor, with what it was before. Undo puts it back, and a roll back puts the whole site back to an earlier time.', 'activity-log-with-undo' ); ?></p>
@@ -827,6 +839,8 @@ final class LogPage implements Service {
 				$this->render_settings();
 			} elseif ( 'rollback' === $tab ) {
 				$this->render_rollback();
+			} elseif ( 'alerts' === $tab && $this->alerts ) {
+				$this->alerts->render();
 			} else {
 				$this->render_log();
 			}

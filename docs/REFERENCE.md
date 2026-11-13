@@ -49,6 +49,26 @@ The **preview** lists every change since then, newest first, grouped by area. Ea
 
 The run undoes change sets newest first, a few per request (the progress bar shows how far it got), and skips clashes and reports them, unless you tick "Stop at the first change that clashes". Changes made by the roll back share one change set with one **Roll back** entry, so Redo on that entry puts everything back. A run handles up to 400 changes; the preview says when some are left for the next run. A roll back nobody finishes can be continued or cancelled on the same tab, and Site Health flags one that has been idle for an hour.
 
+## Alerts and the daily digest
+
+**Tools > Activity Log > Alerts** sends a message when a kind of change is logged. A rule has:
+
+- **Events and areas**: tick the events, or none for any change. Areas are the recorders (settings, plugins, themes, users, content, terms, menus, Site Editor).
+- **Objects**: optional setting names, plugin files or IDs, such as `siteurl, home`.
+- **Made by**: optional user names and roles. Either one fires the rule.
+- **Also needs**: a condition (`becomes_administrator`, `turned_on`, or one you add) and "only outside working hours". Working days and hours are set on the same tab, in the site time zone.
+- **Delivery**: email, a webhook, or both. A webhook gets JSON or the Slack format. Send right away, or as one digest a day at the start of working hours.
+
+Six starter rules are offered and added turned off: a new administrator, a plugin deactivated or deleted, the theme switched, the site address changed, anyone can register turned on, and the default role changed.
+
+**One message for a bulk change.** Matching runs at the end of the request, so forty entries from one save are one message. After an instant message, the rule waits the throttle time (10 minutes by default) and sends what happened in between as one combined message. A daily rule queues and sends its digest once a day. **Send a test** on each rule sends a sample through every channel and says whether each worked. A test does not start a throttle window.
+
+**What a message says.** Who, what, the before and after value, and a link to the entry in the log. There is no undo link: undoing happens on the site after you sign in. Lists of words are listed, bigger structures are counted ("3 fields"), and the values of anything named like a password, key, token or salt are left out.
+
+**Only what the reader may edit.** Each email address gets its own message. An address that belongs to a user who may open the log reads about the objects that user may edit. Anything else shows as "A change to something you are not allowed to see", with only who and when. An address that belongs to no user, and a webhook whose rule has no known owner, only ever get that. A webhook reads as the person who made the rule.
+
+**Webhook URLs are secrets.** They are kept in their own option, never autoloaded, and are never printed back, returned by the abilities or put in an error message. The rule form shows the host only. The default allows `https` URLs and uses the safe HTTP API, which refuses private addresses.
+
 ## Change sets and conflicts
 
 Every entry written in one request shares a change set. Undo on any entry undoes the whole set, newest first, so one save that changed five options comes back as one. A set holds at most 100 entries (filterable), so a long WP-CLI import does not become one giant undo.
@@ -114,6 +134,30 @@ The undo is logged like any other change, with `undo_of` pointing at the entry i
 | `activity_log_with_undo_option_skipped` | action | `( string $option, string $reason )`. A setting change was not logged: `background` (no person started the request) or `rate_limited` |
 | `activity_log_with_undo_cleaned_up` | action | `( int $deleted, string[] $options )`. The upgrade clean-up deleted the last of the entries it found |
 | `activity_log_with_undo_settings_saved` | action | `( array $settings, array $old )`. The settings changed |
+| `activity_log_with_undo_alerts_capability` | filter | `( string $capability )`. Who may manage alert rules and send test alerts. Default: the log capability |
+| `activity_log_with_undo_alert_starter_rules` | filter | `( array $starters )`. The starter rules offered on the Alerts tab, rule ID => fields (`name`, `events`, `areas`, `objects`, `condition`, `outside_hours`). They are added turned off |
+| `activity_log_with_undo_alert_conditions` | filter | `( array $conditions )`. Conditions a rule can add, ID => label. Test your own in `activity_log_with_undo_alert_condition_met` |
+| `activity_log_with_undo_alert_condition_met` | filter | `( bool $met, string $condition, Entry $entry )`. Whether a named condition holds for an entry |
+| `activity_log_with_undo_alert_matches` | filter | `( bool $match, array $rule, Entry $entry )`. Final say on whether a rule fires for an entry |
+| `activity_log_with_undo_alert_outside_hours` | filter | `( bool $outside, int $timestamp )`. Whether a moment counts as outside working hours |
+| `activity_log_with_undo_alert_throttle` | filter | `( int $seconds )`. How long a rule waits between instant messages. Default 600 (the saved minutes). Changes in the window are held and sent together. 0 turns it off |
+| `activity_log_with_undo_alert_max_rules` | filter | `( int $max )`. Most alert rules a site may have. Default 50 |
+| `activity_log_with_undo_alert_max_entries` | filter | `( int $max )`. Entries one message lists; the rest is counted. Default 20 |
+| `activity_log_with_undo_alert_queue_limit` | filter | `( int $limit )`. Entries a rule queues for its next message. Default 500 |
+| `activity_log_with_undo_alert_value_length` | filter | `( int $length )`. Characters of a before or after value an alert shows. Default 120 |
+| `activity_log_with_undo_alert_recipients` | filter | `( string[] $emails, array $rule )`. Addresses of a rule. Each address gets its own message, cut down to what that person may see |
+| `activity_log_with_undo_alert_message` | filter | `( array $message, array $rule, int $viewer )`. The message before it is sent: `subject`, `title`, `count`, `items`, `more`. Keep it free of what the reader may not see |
+| `activity_log_with_undo_alert_webhook_payload` | filter | `( array $payload, array $rule, array $message, string $format )`. The data a webhook receives, `json` or `slack` |
+| `activity_log_with_undo_alert_webhook_args` | filter | `( array $args, array $payload )`. Arguments of the webhook request (`wp_safe_remote_post`) |
+| `activity_log_with_undo_alert_webhook_schemes` | filter | `( string[] $schemes )`. URL schemes a webhook may use. Default `https` only |
+| `activity_log_with_undo_alert_digest_time` | filter | `( int $timestamp )`. When the first daily digest goes out. Default: tomorrow at the start of working hours |
+| `activity_log_with_undo_alert_rule_saved` | action | `( array $rule, bool $new )`. A rule was saved. The rule holds no webhook URL |
+| `activity_log_with_undo_alert_rule_deleted` | action | `( array $rule )`. A rule was deleted |
+| `activity_log_with_undo_alert_sent` | action | `( array $rule, string $channel, Entry[] $entries, string $kind )`. A message went out. `$channel` is `email` or `webhook`, `$kind` is `instant`, `held`, `digest` or `test` |
+| `activity_log_with_undo_alert_failed` | action | `( array $rule, string $channel, string $error, Entry[] $entries )`. A message could not be sent. The error never holds the webhook URL |
+| `activity_log_with_undo_alert_throttled` | action | `( array $rule, Entry[] $entries )`. A rule held changes back because it sent a message a moment ago |
+| `activity_log_with_undo_alert_digest_sent` | action | `( int $sent )`. The daily digests went out |
+| `activity_log_with_undo_alert_test_sent` | action | `( array $rule, array $results )`. A test alert was sent; one result per channel |
 
 ```php
 // Editors may see the log and undo too.
@@ -161,7 +205,7 @@ wp.hooks.addFilter( 'activityLogWithUndo.confirmMessage', 'my-plugin', ( message
 
 ## Abilities
 
-On WordPress 6.9 and later, Activity Log with Undo registers [abilities](https://developer.wordpress.org/apis/abilities/), so AI agents can use them through the [MCP adapter](https://github.com/WordPress/mcp-adapter) and anything else through the REST API under `/wp-abilities/v1/`. Each one is marked public, which the MCP adapter needs before it lists an ability. All of them need the log capability, and each change is checked against the object it is about: an entry you may not edit comes back with `masked: true` and no object name, values or IP address, and cannot be undone. `run-rollback` also needs the roll back capability.
+On WordPress 6.9 and later, Activity Log with Undo registers [abilities](https://developer.wordpress.org/apis/abilities/), so AI agents can use them through the [MCP adapter](https://github.com/WordPress/mcp-adapter) and anything else through the REST API under `/wp-abilities/v1/`. Each one is marked public, which the MCP adapter needs before it lists an ability. All of them need the log capability (the alert abilities need the alerts capability, which defaults to it), and each change is checked against the object it is about: an entry you may not edit comes back with `masked: true` and no object name, values or IP address, and cannot be undone. `run-rollback` also needs the roll back capability.
 
 | Ability | Does |
 | --- | --- |
@@ -170,6 +214,9 @@ On WordPress 6.9 and later, Activity Log with Undo registers [abilities](https:/
 | `activity-log-with-undo/preview-rollback` | Read-only. Every change since a moment, newest first, each marked `will`, `blocked` (with the reason) or `conflict`, with counts. Input: `to` (a time in the site time zone, a preset `hour`, `morning`, `yesterday`, or a log entry number for "just before it"), `user`, `area` |
 | `activity-log-with-undo/run-rollback` | Destructive. Undoes everything since that moment, newest first, and logs it as one entry that can be redone. Clashes are skipped and reported unless `stop_on_conflict` is true. After `activity_log_with_undo_rollback_time_budget` seconds it answers `state: running` with a `job`; call again with `job` to continue |
 | `activity-log-with-undo/undo-change` | Destructive. Undoes `id` with the rest of its change set. Refuses with a 409 when things changed since, unless `force` is true |
+| `activity-log-with-undo/list-alert-rules` | Read-only. The alert rules: events, areas, objects, mode, whether email is on and whether a webhook is set. Webhook URLs and email addresses are never returned |
+| `activity-log-with-undo/set-alert-enabled` | Idempotent. Turns one rule on or off. Input: `id`, `enabled` |
+| `activity-log-with-undo/send-test-alert` | Sends a sample message through every channel of one rule and returns one result per channel. Input: `id` |
 
 Changes made while an ability runs are logged with the source `ability`.
 
@@ -185,9 +232,16 @@ wp activity-log-with-undo rollback --to=<time|id> [--user=<id|login|email>] [--a
 wp activity-log-with-undo purge [--older-than=<days>]
 wp activity-log-with-undo cleanup [--dry-run] [--yes] [--format=table|csv|json|yaml]
 wp activity-log-with-undo settings [--retention-days=<n>] [--ip=full|masked|off] [--payload-kb=<n>] [--admin-bar=on|off] [--enable=<recorders>] [--disable=<recorders>] [--format=table|json|yaml]
+wp activity-log-with-undo alerts list [--format=table|csv|json|yaml|count|ids]
+wp activity-log-with-undo alerts add <name> [--starter=<id>] [--events=<events>] [--areas=<areas>] [--objects=<objects>] [--users=<ids>] [--roles=<roles>] [--outside-hours] [--emails=<emails>] [--skip-email] [--webhook=<url>] [--format=json|slack] [--mode=instant|daily] [--enable] [--porcelain]
+wp activity-log-with-undo alerts enable <id>
+wp activity-log-with-undo alerts disable <id>
+wp activity-log-with-undo alerts delete <id> [--yes]
+wp activity-log-with-undo alerts test <id>
+wp activity-log-with-undo alerts digest
 ```
 
-Dates take `2026-10-01`, an ISO 8601 time or `"2 days ago"`. `purge --older-than=0` empties the log. `rollback --to` takes a time (`"2026-11-13 14:00"`, `"2 hours ago"`) or a log entry number, meaning just before that change. It prints what it would undo, asks, undoes in batches, and logs one entry; `undo` that entry to redo everything. `--area` is one of `options`, `plugins`, `themes`, `users`, `posts`, `terms`, `menus`, `site_editor`. `undo` lists the other changes saved together and asks before undoing them all, and undoing a new user asks first too, unless `--yes`. Run it with `--user=<login>` so their content has someone to go to. `cleanup` deletes old entries of options that are not settings (see Upgrading from 1.0.0). Settings registered only in wp-admin are unknown to WP-CLI, so check its list before you confirm.
+Dates take `2026-10-01`, an ISO 8601 time or `"2 days ago"`. `purge --older-than=0` empties the log. `rollback --to` takes a time (`"2026-11-13 14:00"`, `"2 hours ago"`) or a log entry number, meaning just before that change. It prints what it would undo, asks, undoes in batches, and logs one entry; `undo` that entry to redo everything. `--area` is one of `options`, `plugins`, `themes`, `users`, `posts`, `terms`, `menus`, `site_editor`. `undo` lists the other changes saved together and asks before undoing them all, and undoing a new user asks first too, unless `--yes`. Run it with `--user=<login>` so their content has someone to go to. `alerts add` is off unless you pass `--enable`; `--starter` copies one of the starter rules (`new-administrator`, `plugin-removed`, `theme-switched`, `site-address`, `registration-on`, `default-role`). A webhook URL is read when you add the rule and is never printed again. `alerts digest` sends the daily digests now. `cleanup` deletes old entries of options that are not settings (see Upgrading from 1.0.0). Settings registered only in wp-admin are unknown to WP-CLI, so check its list before you confirm.
 
 ## PHP API
 
@@ -208,7 +262,7 @@ A custom recorder implements `Recorder` (`id`, `label`, `events`, `register`, `c
 | Where | Contents |
 | --- | --- |
 | `{prefix}activity_log_with_undo` table | One row per change: time (UTC), change set, event, recorder, object type, ID and name, user ID, source, IP address, the before and after state as JSON, whether it can be undone, `undone_by` and `undo_of`, and for an approved AI agent call `agent`, `agent_request` and `approved_by`. `before` is a reserved word in MySQL, so the states live in `before_state` and `after_state` |
-| `activity_log_with_undo_settings` | Recorders turned off, retention days, IP mode, payload limit, admin bar |
+| `activity_log_with_undo_settings` | Recorders turned off, retention days, IP mode, payload limit, admin bar, working days and hours, wait between alert messages |
 | `activity_log_with_undo_db_version` | Table version, for upgrades. Version 2 added the agent columns |
 | `activity_log_with_undo_cleanup` | State of the upgrade clean-up: status, the options found, entries found and deleted |
 | `activity_log_with_undo_cleanup` (job) | WP-Cron job that keeps deleting those entries in batches until done |
@@ -216,6 +270,10 @@ A custom recorder implements `Recorder` (`id`, `label`, `events`, `register`, `c
 | `activity_log_with_undo_purge` | Daily WP-Cron job that deletes old entries |
 | `activity_log_with_undo_rollback_job`, `activity_log_with_undo_rollback_lock` | The roll back in progress (not autoloaded) and its step lock. Both go when it ends; a job nobody touches for an hour is closed by the daily job |
 | `activity_log_with_undo_steps_dismissed` (user meta) | Set when someone hides the "Get started" card |
+| `activity_log_with_undo_alert_rules` | The alert rules. No webhook URLs |
+| `activity_log_with_undo_alert_secrets` | Webhook URLs by rule ID. Never autoloaded, never shown |
+| `activity_log_with_undo_alert_state` | Last send and last error per rule, and the held and daily queues (entry IDs). Not autoloaded |
+| `activity_log_with_undo_alert_digest`, `activity_log_with_undo_alert_held` | WP-Cron jobs: the daily digest, and the single event that sends held changes |
 
 States that survive a JSON round trip are stored as `{"v": ...}`. Anything else (objects in an option, for example) is stored serialized as `{"s": "..."}`, the way WordPress stores options. A state over the size limit is stored as `{"over_limit": <bytes>}`, or `{"over_limit": <bytes>, "reason": "log_full"}` when the log was over its size limit, and the entry cannot be undone.
 
@@ -223,7 +281,7 @@ Uninstalling drops the table, deletes the options and the job, on every site of 
 
 ## Privacy
 
-Entries hold the user ID, the source and the IP address of each change: shortened by default (`192.168.1.0`), full or none from the settings, and for an approved agent call the user ID of the approver. They take part in **Tools > Export Personal Data** and **Tools > Erase Personal Data**. Erasing keeps the change history and removes the person from it: the user ID becomes "(removed)", also where they approved an agent call, the IP address goes, and entries about their own account lose the stored profile values. **Settings > Privacy** gets suggested text for your privacy policy.
+Entries hold the user ID, the source and the IP address of each change: shortened by default (`192.168.1.0`), full or none from the settings, and for an approved agent call the user ID of the approver. They take part in **Tools > Export Personal Data** and **Tools > Erase Personal Data**. Erasing keeps the change history and removes the person from it: the user ID becomes "(removed)", also where they approved an agent call, the IP address goes, and entries about their own account lose the stored profile values. Alert rules keep the email addresses that get alerts, and the user who made the rule. Both are in the personal data export, and erasing removes the address and the owner from the rules and keeps the rules. **Settings > Privacy** gets suggested text for your privacy policy.
 
 ## Multisite
 

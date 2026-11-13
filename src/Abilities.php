@@ -8,6 +8,8 @@
 namespace AryanX\Axle\ActivityLogWithUndo;
 
 use AryanX\Axle\ActivityLogWithUndo\Admin\LogPage;
+use AryanX\Axle\ActivityLogWithUndo\Alerts\Alerts;
+use AryanX\Axle\ActivityLogWithUndo\Alerts\Rules;
 use AryanX\Axle\ActivityLogWithUndo\Recorders\Registry;
 
 defined( 'ABSPATH' ) || exit;
@@ -52,18 +54,36 @@ final class Abilities implements Service {
 	private Rollback $rollback;
 
 	/**
+	 * Alert rules.
+	 *
+	 * @var Rules|null
+	 */
+	private ?Rules $alert_rules;
+
+	/**
+	 * Sends alerts.
+	 *
+	 * @var Alerts|null
+	 */
+	private ?Alerts $alerts;
+
+	/**
 	 * Sets up the abilities.
 	 *
-	 * @param Store    $store    Entries.
-	 * @param Registry $registry Recorders.
-	 * @param Undoer   $undoer   Reverses changes.
-	 * @param Rollback $rollback Rolls the site back to a moment.
+	 * @param Store       $store    Entries.
+	 * @param Registry    $registry Recorders.
+	 * @param Undoer      $undoer   Reverses changes.
+	 * @param Rollback    $rollback Rolls the site back to a moment.
+	 * @param Rules|null  $alert_rules Alert rules.
+	 * @param Alerts|null $alerts      Sends alerts.
 	 */
-	public function __construct( Store $store, Registry $registry, Undoer $undoer, Rollback $rollback ) {
-		$this->store    = $store;
-		$this->registry = $registry;
-		$this->undoer   = $undoer;
-		$this->rollback = $rollback;
+	public function __construct( Store $store, Registry $registry, Undoer $undoer, Rollback $rollback, ?Rules $alert_rules = null, ?Alerts $alerts = null ) {
+		$this->store       = $store;
+		$this->registry    = $registry;
+		$this->undoer      = $undoer;
+		$this->rollback    = $rollback;
+		$this->alert_rules = $alert_rules;
+		$this->alerts      = $alerts;
 	}
 
 	/**
@@ -401,7 +421,184 @@ final class Abilities implements Service {
 				'idempotent'  => false,
 			)
 		);
+		$this->register_alert_abilities();
 	}
+
+	/**
+	 * Abilities for alert rules. None returns or accepts a webhook URL.
+	 */
+	private function register_alert_abilities(): void {
+		if ( ! $this->alert_rules || ! $this->alerts ) {
+			return;
+		}
+
+		$can  = static function (): bool {
+			return current_user_can( Alerts::capability() );
+		};
+		$rule = array(
+			'type'       => 'object',
+			'properties' => array(
+				'id'            => array( 'type' => 'string' ),
+				'name'          => array( 'type' => 'string' ),
+				'enabled'       => array( 'type' => 'boolean' ),
+				'events'        => array(
+					'type'  => 'array',
+					'items' => array( 'type' => 'string' ),
+				),
+				'areas'         => array(
+					'type'  => 'array',
+					'items' => array( 'type' => 'string' ),
+				),
+				'objects'       => array(
+					'type'  => 'array',
+					'items' => array( 'type' => 'string' ),
+				),
+				'outside_hours' => array( 'type' => 'boolean' ),
+				'mode'          => array( 'type' => 'string' ),
+				'email'         => array( 'type' => 'boolean' ),
+				'webhook'       => array(
+					'type'        => 'boolean',
+					'description' => 'Whether a webhook is set. The URL is a secret and is never returned.',
+				),
+				'format'        => array( 'type' => 'string' ),
+			),
+		);
+
+		$this->ability(
+			'list-alert-rules',
+			__( 'List alert rules', 'activity-log-with-undo' ),
+			__( 'The alert rules of the site: what each one listens for, whether it is on, and how it delivers. Webhook URLs are secrets and are not included.', 'activity-log-with-undo' ),
+			array(
+				'type'                 => 'object',
+				'properties'           => array(),
+				'additionalProperties' => false,
+				'default'              => array(),
+			),
+			array(
+				'type'  => 'array',
+				'items' => $rule,
+			),
+			array( $this, 'list_alert_rules' ),
+			$can,
+			array(
+				'readonly'   => true,
+				'idempotent' => true,
+			)
+		);
+
+		$this->ability(
+			'set-alert-enabled',
+			__( 'Turn an alert rule on or off', 'activity-log-with-undo' ),
+			__( 'Turns one alert rule on or off. Nothing is deleted, and doing it twice changes nothing more.', 'activity-log-with-undo' ),
+			array(
+				'type'                 => 'object',
+				'properties'           => array(
+					'id'      => array( 'type' => 'string' ),
+					'enabled' => array( 'type' => 'boolean' ),
+				),
+				'required'             => array( 'id', 'enabled' ),
+				'additionalProperties' => false,
+			),
+			$rule,
+			array( $this, 'set_alert_enabled' ),
+			$can,
+			array(
+				'readonly'    => false,
+				'destructive' => false,
+				'idempotent'  => true,
+			)
+		);
+
+		$this->ability(
+			'send-test-alert',
+			__( 'Send a test alert', 'activity-log-with-undo' ),
+			__( 'Sends a sample message through every channel of one alert rule, and says whether each one worked. Nothing on the site changes.', 'activity-log-with-undo' ),
+			array(
+				'type'                 => 'object',
+				'properties'           => array(
+					'id' => array( 'type' => 'string' ),
+				),
+				'required'             => array( 'id' ),
+				'additionalProperties' => false,
+			),
+			array(
+				'type'  => 'array',
+				'items' => array(
+					'type'       => 'object',
+					'properties' => array(
+						'channel' => array( 'type' => 'string' ),
+						'target'  => array( 'type' => 'string' ),
+						'ok'      => array( 'type' => 'boolean' ),
+						'error'   => array( 'type' => 'string' ),
+					),
+				),
+			),
+			array( $this, 'send_test_alert' ),
+			$can,
+			array(
+				'readonly'    => false,
+				'destructive' => false,
+				'idempotent'  => false,
+			)
+		);
+	}
+
+	/**
+	 * A rule as the abilities return it: no webhook URL, no email addresses.
+	 *
+	 * @param array $rule Rule.
+	 * @return array
+	 */
+	private function rule_data( array $rule ): array {
+		return array(
+			'id'            => $rule['id'],
+			'name'          => $rule['name'],
+			'enabled'       => $rule['enabled'],
+			'events'        => $rule['events'],
+			'areas'         => $rule['areas'],
+			'objects'       => $rule['objects'],
+			'outside_hours' => $rule['outside_hours'],
+			'mode'          => $rule['mode'],
+			'email'         => $rule['email'],
+			'webhook'       => $rule['webhook'] && $this->alert_rules && $this->alert_rules->has_webhook( $rule['id'] ),
+			'format'        => $rule['format'],
+		);
+	}
+
+	/**
+	 * Ability: lists the alert rules.
+	 *
+	 * @return array
+	 */
+	public function list_alert_rules(): array {
+		return array_values( array_map( array( $this, 'rule_data' ), $this->alert_rules ? $this->alert_rules->all() : array() ) );
+	}
+
+	/**
+	 * Ability: turns a rule on or off.
+	 *
+	 * @param array|null $input Ability input.
+	 * @return array|\WP_Error
+	 */
+	public function set_alert_enabled( $input = null ) {
+		$input = (array) $input;
+		$saved = $this->alert_rules->set_enabled( sanitize_key( (string) ( $input['id'] ?? '' ) ), ! empty( $input['enabled'] ) );
+
+		return is_wp_error( $saved ) ? $saved : $this->rule_data( $saved );
+	}
+
+	/**
+	 * Ability: sends a test alert.
+	 *
+	 * @param array|null $input Ability input.
+	 * @return array|\WP_Error
+	 */
+	public function send_test_alert( $input = null ) {
+		$input = (array) $input;
+
+		return $this->alerts->test( sanitize_key( (string) ( $input['id'] ?? '' ) ) );
+	}
+
 
 	/**
 	 * Ability: what a roll back would do.

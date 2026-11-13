@@ -42,6 +42,7 @@ Activity logs tell you what changed. They do not help you put it back. Activity 
 - **One save, one undo**: changes from one request are a change set, the confirm names every change it puts back, and the undo is logged too, so it can be redone
 - Filters, search, bulk undo, a before/after diff with names people know, "Undo last change" in the admin bar, WP-CLI, and abilities for AI agents. With Agent Governance, an approved agent change says which agent and who approved it
 - **Only what you may see**: entries about a post, term, user or setting you are not allowed to edit show as a hidden change, with no name or values, in the screen, the REST route, the abilities and WP-CLI, and you cannot undo them
+- **Alerts and a daily digest**: rules by event, area, user or role, and "only outside working hours", with six starter rules (new administrator, plugin deactivated or deleted, theme switched, site address changed, anyone can register turned on, default role changed), off until you turn them on. Email and webhook (JSON or Slack format), right away or as a daily digest, one message for a bulk change, a Send a test button per rule. Each message names who, what, before and after and links to the entry; Undo stays on the site. Webhook URLs are never shown again or returned by abilities, and nobody is told about something they may not edit
 
 ## Install
 
@@ -69,6 +70,9 @@ wp activity-log-with-undo undo 42 --force
 # Put the site back to 2 pm, after a look at the preview:
 wp activity-log-with-undo rollback --to="2026-11-13 14:00" --dry-run
 wp activity-log-with-undo rollback --to="2026-11-13 14:00"
+# Hear about the changes that matter:
+wp activity-log-with-undo alerts add "Plugin removed" --starter=plugin-removed --enable
+wp activity-log-with-undo alerts test <id>
 ```
 
 ## Screenshots
@@ -88,7 +92,7 @@ wp activity-log-with-undo rollback --to="2026-11-13 14:00"
 
 | Doc | What it covers |
 | --- | --- |
-| [Reference](docs/REFERENCE.md) | What each recorder logs and undoes, rolling back to a time, hooks, abilities, WP-CLI, data and privacy |
+| [Reference](docs/REFERENCE.md) | What each recorder logs and undoes, rolling back to a time, alerts, hooks, abilities, WP-CLI, data and privacy |
 | [Development](docs/DEVELOPMENT.md) | Local setup, commands and tests |
 | [Contributing](docs/CONTRIBUTING.md) | Pull requests, required checks and PR titles |
 | [Releasing](docs/RELEASING.md) | How merged pull requests become releases |
@@ -109,6 +113,7 @@ src/
 ├── Access.php              per-object check: who may see and undo an entry
 ├── Recorders/              options, plugins, themes, users, posts, terms, menus, Site Editor
 ├── Integrations/           Category & Tag Trash
+├── Alerts/                 rules, matching, messages, delivery, digest
 ├── Admin/                  Tools > Activity Log, diff view, admin bar
 ├── Rest/UndoController.php undo without a page load
 ├── Abilities.php           list-activity, get-entry, undo-change
@@ -138,15 +143,15 @@ Small plugins that each fill one gap in WordPress, all free with no pro version.
 | <img src="https://raw.githubusercontent.com/aryanjasala/agent-governance/main/.wordpress-org/icon-128x128.png" alt="" width="32"> | [Agent Governance](https://github.com/aryanjasala/agent-governance) | Hold risky AI agent calls for approval, preview what they change, and roll back a session |
 | <img src="https://raw.githubusercontent.com/aryanjasala/axle-ai-guard/main/.wordpress-org/icon-128x128.png" alt="" width="32"> | [Axle AI Guard](https://github.com/aryanjasala/axle-ai-guard) | See and control every AI call your plugins make: cost, data sent, budgets and a kill switch |
 | <img src="https://raw.githubusercontent.com/aryanjasala/axle-config-sync/main/.wordpress-org/icon-128x128.png" alt="" width="32"> | [Axle Config Sync](https://github.com/aryanjasala/axle-config-sync) | Keep settings in git, diff them against the live site, apply with a preview and undo |
-| <img src="https://raw.githubusercontent.com/aryanjasala/axle-leftovers/main/.wordpress-org/icon-128x128.png" alt="" width="32"> | [Axle Leftovers](https://github.com/aryanjasala/axle-leftovers) | Find what deleted plugins left behind, see who owns it and why, and clean it up with undo |
+| <img src="https://raw.githubusercontent.com/aryanjasala/axle-leftovers/main/.wordpress-org/icon-128x128.png" alt="" width="32"> | [Axle Leftovers](https://github.com/aryanjasala/axle-leftovers) | Find what deleted plugins and themes left behind, see who owns it and why, and clean it up with undo |
 | <img src="https://raw.githubusercontent.com/aryanjasala/axle-license-tracker/main/.wordpress-org/icon-128x128.png" alt="" width="32"> | [Axle License Tracker](https://github.com/aryanjasala/axle-license-tracker) | See which premium plugins are licensed, which lapsed and stopped getting updates, and what renews when |
-| <img src="https://raw.githubusercontent.com/aryanjasala/axle-review/main/.wordpress-org/icon-128x128.png" alt="" width="32"> | [Axle Review](https://github.com/aryanjasala/axle-review) | Share drafts through private links and collect outside feedback as block Notes |
+| <img src="https://raw.githubusercontent.com/aryanjasala/axle-review/main/.wordpress-org/icon-128x128.png" alt="" width="32"> | [Axle Review](https://github.com/aryanjasala/axle-review) | Share drafts through private links, collect outside feedback as block Notes, and know when an approval is out of date |
 | <img src="https://raw.githubusercontent.com/aryanjasala/axle-runtime-doctor/main/.wordpress-org/icon-128x128.png" alt="" width="32"> | [Axle Runtime Doctor](https://github.com/aryanjasala/axle-runtime-doctor) | Check OPcache coverage, the object cache, PHP support and limits, cron and more, with the fix for your host |
 | <img src="https://raw.githubusercontent.com/aryanjasala/axle-smoke-test/main/.wordpress-org/icon-128x128.png" alt="" width="32"> | [Axle Smoke Test](https://github.com/aryanjasala/axle-smoke-test) | Check key pages after every update or deploy, see what broke and roll it back |
-| <img src="https://raw.githubusercontent.com/aryanjasala/block-doctor/main/.wordpress-org/icon-128x128.png" alt="" width="32"> | [Block Doctor](https://github.com/aryanjasala/block-doctor) | Scan the whole site for invalid and broken blocks and fix them in bulk, with undo |
-| <img src="https://raw.githubusercontent.com/aryanjasala/block-theme-ops/main/.wordpress-org/icon-128x128.png" alt="" width="32"> | [Block Theme Ops](https://github.com/aryanjasala/block-theme-ops) | Find Site Editor changes that override your theme files, see the diff, reset them or send them to Git |
+| <img src="https://raw.githubusercontent.com/aryanjasala/block-doctor/main/.wordpress-org/icon-128x128.png" alt="" width="32"> | [Block Doctor](https://github.com/aryanjasala/block-doctor) | Scan the site for broken blocks and fix them in bulk, with undo. See which posts use each block before you switch a plugin off |
+| <img src="https://raw.githubusercontent.com/aryanjasala/block-theme-ops/main/.wordpress-org/icon-128x128.png" alt="" width="32"> | [Block Theme Ops](https://github.com/aryanjasala/block-theme-ops) | Find Site Editor changes that override your theme files, see the diff, reset them, send them to Git, move them to another site or lock them |
 | <img src="https://raw.githubusercontent.com/aryanjasala/role-right-sizer/main/.wordpress-org/icon-128x128.png" alt="" width="32"> | [Role Right-Sizer](https://github.com/aryanjasala/role-right-sizer) | Recommends the smallest role each user needs, from what they actually do |
-| <img src="https://raw.githubusercontent.com/aryanjasala/update-rehearsal/main/.wordpress-org/icon-128x128.png" alt="" width="32"> | [Update Rehearsal](https://github.com/aryanjasala/update-rehearsal) | Try plugin, theme, core and PHP updates on a disposable copy of your site in WordPress Playground first |
+| <img src="https://raw.githubusercontent.com/aryanjasala/update-rehearsal/main/.wordpress-org/icon-128x128.png" alt="" width="32"> | [Update Rehearsal](https://github.com/aryanjasala/update-rehearsal) | Try plugin, theme, core and PHP updates, a new plugin, or life without one, on a disposable copy of your site in WordPress Playground first |
 | <img src="https://raw.githubusercontent.com/aryanjasala/user-session-manager/main/.wordpress-org/icon-128x128.png" alt="" width="32"> | [User Session Manager](https://github.com/aryanjasala/user-session-manager) | See every device signed in, sign out one, and limit sessions per role |
 
 ## License

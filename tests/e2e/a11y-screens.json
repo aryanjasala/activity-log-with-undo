@@ -358,6 +358,127 @@
           "AryanX\\Axle\\ActivityLogWithUndo\\Plugin::instance()->store()->truncate();"
         ]
       ]
+    },
+    {
+      "name": "Alerts, empty with starter rules",
+      "setup": [
+        [
+          "eval",
+          "delete_option( 'activity_log_with_undo_alert_rules' ); delete_option( 'activity_log_with_undo_alert_secrets' ); delete_option( 'activity_log_with_undo_alert_state' );"
+        ]
+      ],
+      "url": "/wp-admin/tools.php?page=activity-log-with-undo&tab=alerts"
+    },
+    {
+      "name": "Alerts, with rules",
+      "setup": [
+        [
+          "eval",
+          "delete_option( 'activity_log_with_undo_alert_rules' ); delete_option( 'activity_log_with_undo_alert_secrets' ); delete_option( 'activity_log_with_undo_alert_state' );"
+        ],
+        [
+          "activity-log-with-undo",
+          "alerts",
+          "add",
+          "Site title",
+          "--events=option_updated",
+          "--objects=blogname",
+          "--emails=admin@example.test",
+          "--webhook=https://hooks.slack.com/services/T000/B000/SECRETSECRET",
+          "--enable"
+        ]
+      ],
+      "url": "/wp-admin/tools.php?page=activity-log-with-undo&tab=alerts",
+      "cleanup": [
+        [
+          "eval",
+          "delete_option( 'activity_log_with_undo_alert_rules' ); delete_option( 'activity_log_with_undo_alert_secrets' ); delete_option( 'activity_log_with_undo_alert_state' );"
+        ]
+      ]
+    },
+    {
+      "name": "Alerts, rule form",
+      "setup": [
+        [
+          "eval",
+          "delete_option( 'activity_log_with_undo_alert_rules' ); delete_option( 'activity_log_with_undo_alert_secrets' ); delete_option( 'activity_log_with_undo_alert_state' );"
+        ],
+        [
+          "activity-log-with-undo",
+          "alerts",
+          "add",
+          "Site title",
+          "--events=option_updated",
+          "--objects=blogname",
+          "--emails=admin@example.test",
+          "--webhook=https://hooks.slack.com/services/T000/B000/SECRETSECRET",
+          "--enable"
+        ],
+        {
+          "wp": [
+            "activity-log-with-undo",
+            "alerts",
+            "list",
+            "--format=ids"
+          ],
+          "save": "rule"
+        }
+      ],
+      "url": "/wp-admin/tools.php?page=activity-log-with-undo&tab=alerts&rule={rule}",
+      "cleanup": [
+        [
+          "eval",
+          "delete_option( 'activity_log_with_undo_alert_rules' ); delete_option( 'activity_log_with_undo_alert_secrets' ); delete_option( 'activity_log_with_undo_alert_state' );"
+        ]
+      ]
+    },
+    {
+      "name": "Alerts, new rule form",
+      "url": "/wp-admin/tools.php?page=activity-log-with-undo&tab=alerts&rule=new"
+    },
+    {
+      "name": "Alerts, delete step open",
+      "setup": [
+        [
+          "eval",
+          "delete_option( 'activity_log_with_undo_alert_rules' ); delete_option( 'activity_log_with_undo_alert_secrets' ); delete_option( 'activity_log_with_undo_alert_state' );"
+        ],
+        [
+          "activity-log-with-undo",
+          "alerts",
+          "add",
+          "Site title",
+          "--events=option_updated",
+          "--objects=blogname",
+          "--emails=admin@example.test",
+          "--webhook=https://hooks.slack.com/services/T000/B000/SECRETSECRET",
+          "--enable"
+        ],
+        {
+          "wp": [
+            "activity-log-with-undo",
+            "alerts",
+            "list",
+            "--format=ids"
+          ],
+          "save": "rule"
+        }
+      ],
+      "url": "/wp-admin/tools.php?page=activity-log-with-undo&tab=alerts&rule={rule}",
+      "steps": [
+        {
+          "click": ".alu-reveal"
+        },
+        {
+          "waitFor": "#alu-alert-delete-confirm:not([hidden])"
+        }
+      ],
+      "cleanup": [
+        [
+          "eval",
+          "delete_option( 'activity_log_with_undo_alert_rules' ); delete_option( 'activity_log_with_undo_alert_secrets' ); delete_option( 'activity_log_with_undo_alert_state' );"
+        ]
+      ]
     }
   ],
   "skip": {}
