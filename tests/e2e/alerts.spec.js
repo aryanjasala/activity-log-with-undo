@@ -204,6 +204,7 @@ test.describe( 'Alerts and the daily digest', () => {
 	} );
 
 	test( 'the abilities list rules without any URL', async () => {
+		test.skip( 'yes' !== wpEval( "echo function_exists( 'wp_get_ability' ) ? 'yes' : 'no';" ), 'The Abilities API needs WordPress 6.9 or later.' );
 		addRule( 'Hooked', '--emails=admin@example.test', '--webhook=' + HOOK, '--enable' );
 		const out = wp( 'eval', 'wp_set_current_user( 1 ); echo wp_json_encode( wp_get_ability( "activity-log-with-undo/list-alert-rules" )->execute( array() ) );' );
 		expect( out ).not.toContain( 'SECRETSECRET' );
