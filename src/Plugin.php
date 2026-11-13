@@ -8,8 +8,16 @@
 namespace AryanX\Axle\ActivityLogWithUndo;
 
 use AryanX\Axle\ActivityLogWithUndo\Admin\AdminBar;
+use AryanX\Axle\ActivityLogWithUndo\Admin\AlertsScreen;
+use AryanX\Axle\ActivityLogWithUndo\Alerts\AlertPrivacy;
+use AryanX\Axle\ActivityLogWithUndo\Alerts\Alerts;
+use AryanX\Axle\ActivityLogWithUndo\Alerts\Delivery;
+use AryanX\Axle\ActivityLogWithUndo\Alerts\Matcher;
+use AryanX\Axle\ActivityLogWithUndo\Alerts\Message;
+use AryanX\Axle\ActivityLogWithUndo\Alerts\Rules;
 use AryanX\Axle\ActivityLogWithUndo\Admin\LogPage;
 use AryanX\Axle\ActivityLogWithUndo\Admin\Notices;
+use AryanX\Axle\ActivityLogWithUndo\Cli\AlertsCommand;
 use AryanX\Axle\ActivityLogWithUndo\Cli\Command;
 use AryanX\Axle\ActivityLogWithUndo\Health\SiteHealth;
 use AryanX\Axle\ActivityLogWithUndo\Integrations\CategoryTagTrash;
@@ -104,6 +112,20 @@ final class Plugin {
 	private Cleanup $cleanup;
 
 	/**
+	 * Alert rules.
+	 *
+	 * @var Rules
+	 */
+	private Rules $alert_rules;
+
+	/**
+	 * Sends alerts and digests.
+	 *
+	 * @var Alerts
+	 */
+	private Alerts $alerts;
+
+	/**
 	 * Starts the plugin. Runs on `plugins_loaded`.
 	 */
 	public static function boot(): void {
@@ -150,6 +172,9 @@ final class Plugin {
 		$this->rollback  = new Rollback( $this->store, $this->logger, $this->undoer, $this->registry );
 		$this->retention = new Retention( $this->store, $this->settings, $this->rollback );
 		$this->cleanup   = new Cleanup( $this->store, $options );
+
+		$this->alert_rules = new Rules();
+		$this->alerts      = new Alerts( $this->store, $this->settings, $this->alert_rules, new Matcher( $this->settings ), new Message( $this->registry ), new Delivery() );
 	}
 
 	/**
@@ -157,6 +182,7 @@ final class Plugin {
 	 */
 	public static function deactivate(): void {
 		Retention::unschedule();
+		Alerts::unschedule();
 		delete_option( Rollback::JOB_OPTION );
 		delete_option( Rollback::LOCK_OPTION );
 		wp_clear_scheduled_hook( Cleanup::HOOK );
@@ -208,23 +234,45 @@ final class Plugin {
 	}
 
 	/**
+	 * Alerts, for other plugins.
+	 *
+	 * @return Alerts
+	 */
+	public function alerts(): Alerts {
+		return $this->alerts;
+	}
+
+	/**
+	 * Alert rules, for other plugins.
+	 *
+	 * @return Rules
+	 */
+	public function alert_rules(): Rules {
+		return $this->alert_rules;
+	}
+
+	/**
 	 * Registers the services.
 	 */
 	private function register(): void {
 		Schema::maybe_install();
 
-		$abilities = new Abilities( $this->store, $this->registry, $this->undoer, $this->rollback );
+		$abilities = new Abilities( $this->store, $this->registry, $this->undoer, $this->rollback, $this->alert_rules, $this->alerts );
+		$screen    = new AlertsScreen( $this->alert_rules, $this->alerts, $this->registry, $this->settings );
 		$services  = array(
 			$this->context,
 			$this->registry,
 			$this->retention,
 			$this->cleanup,
 			new Privacy( $this->store, $this->registry ),
-			new LogPage( $this->store, $this->registry, $this->undoer, $this->settings, $this->retention, $this->rollback ),
+			new LogPage( $this->store, $this->registry, $this->undoer, $this->settings, $this->retention, $this->rollback, $screen ),
+			$screen,
+			$this->alerts,
+			new AlertPrivacy( $this->alert_rules ),
 			new Notices(),
 			new AdminBar( $this->store, $this->registry, $this->settings ),
 			new UndoController( $this->undoer, $this->rollback ),
-			new SiteHealth( $this->settings, $this->store, $this->rollback ),
+			new SiteHealth( $this->settings, $this->store, $this->rollback, $this->alert_rules ),
 			$abilities,
 		);
 
@@ -234,6 +282,7 @@ final class Plugin {
 
 		if ( defined( 'WP_CLI' ) && WP_CLI ) {
 			\WP_CLI::add_command( 'activity-log-with-undo', new Command( $this->store, $this->registry, $this->undoer, $this->retention, $this->settings, $abilities, $this->cleanup, $this->rollback ) );
+			\WP_CLI::add_command( 'activity-log-with-undo alerts', new AlertsCommand( $this->alert_rules, $this->alerts ) );
 		}
 	}
 }

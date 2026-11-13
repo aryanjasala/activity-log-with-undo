@@ -8,6 +8,7 @@
 namespace AryanX\Axle\ActivityLogWithUndo\Health;
 
 use AryanX\Axle\ActivityLogWithUndo\Admin\LogPage;
+use AryanX\Axle\ActivityLogWithUndo\Alerts\Rules;
 use AryanX\Axle\ActivityLogWithUndo\Cleanup;
 use AryanX\Axle\ActivityLogWithUndo\Logger;
 use AryanX\Axle\ActivityLogWithUndo\Retention;
@@ -48,16 +49,25 @@ final class SiteHealth implements Service {
 	private ?Rollback $rollback;
 
 	/**
+	 * Alert rules, to spot one whose messages do not get through.
+	 *
+	 * @var Rules|null
+	 */
+	private ?Rules $alert_rules;
+
+	/**
 	 * Sets up the check.
 	 *
 	 * @param Settings      $settings Saved settings.
 	 * @param Store|null    $store    Entries, for the size of the log.
 	 * @param Rollback|null $rollback Roll backs.
+	 * @param Rules|null    $alert_rules Alert rules.
 	 */
-	public function __construct( Settings $settings, ?Store $store = null, ?Rollback $rollback = null ) {
-		$this->settings = $settings;
-		$this->store    = $store;
-		$this->rollback = $rollback;
+	public function __construct( Settings $settings, ?Store $store = null, ?Rollback $rollback = null, ?Rules $alert_rules = null ) {
+		$this->settings    = $settings;
+		$this->store       = $store;
+		$this->rollback    = $rollback;
+		$this->alert_rules = $alert_rules;
 	}
 
 	/**
@@ -115,6 +125,25 @@ final class SiteHealth implements Service {
 				__( 'A roll back started, but nothing has happened for over an hour. Some changes were undone and some were not. Open the Roll back tab to continue it or cancel it.', 'activity-log-with-undo' ),
 				sprintf( '<p><a href="%s">%s</a></p>', esc_url( admin_url( 'tools.php?page=' . LogPage::SLUG . '&tab=rollback' ) ), esc_html__( 'Open the roll back', 'activity-log-with-undo' ) )
 			);
+		}
+
+		if ( $this->alert_rules ) {
+			$state  = $this->alert_rules->state();
+			$failed = array();
+			foreach ( $this->alert_rules->enabled() as $rule ) {
+				if ( ! empty( $state['rules'][ $rule['id'] ]['error'] ) ) {
+					$failed[] = $rule['name'];
+				}
+			}
+			if ( $failed ) {
+				return $this->result(
+					'recommended',
+					__( 'Some alerts are not getting through', 'activity-log-with-undo' ),
+					/* translators: %s: rule names. */
+					sprintf( __( 'The last message of these alert rules could not be sent: %s. Open the Alerts tab and send a test to see what went wrong.', 'activity-log-with-undo' ), implode( ', ', $failed ) ),
+					sprintf( '<p><a href="%s">%s</a></p>', esc_url( admin_url( 'tools.php?page=' . LogPage::SLUG . '&tab=alerts' ) ), esc_html__( 'Open the alerts', 'activity-log-with-undo' ) )
+				);
+			}
 		}
 
 		$cleanup = Cleanup::state();

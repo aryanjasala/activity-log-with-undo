@@ -21,6 +21,11 @@ function activity_log_with_undo_uninstall_site(): void {
 	delete_option( 'activity_log_with_undo_cleanup' );
 	delete_option( 'activity_log_with_undo_rollback_job' );
 	delete_option( 'activity_log_with_undo_rollback_lock' );
+	delete_option( 'activity_log_with_undo_alert_rules' );
+	delete_option( 'activity_log_with_undo_alert_secrets' );
+	delete_option( 'activity_log_with_undo_alert_state' );
+	wp_unschedule_hook( 'activity_log_with_undo_alert_digest' );
+	wp_unschedule_hook( 'activity_log_with_undo_alert_held' );
 	wp_unschedule_hook( 'activity_log_with_undo_purge' );
 	wp_unschedule_hook( 'activity_log_with_undo_cleanup' );
 	// The "Get started" card's dismissal, kept per user.

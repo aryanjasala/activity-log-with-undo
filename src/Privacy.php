@@ -166,6 +166,7 @@ final class Privacy implements Service {
 		wp_add_privacy_policy_content(
 			__( 'Activity Log with Undo', 'activity-log-with-undo' ),
 			'<p>' . esc_html__( 'When a logged-in user changes settings, plugins, themes, users, content, terms or menus, the site keeps a record of the change: what changed, the old and new values, when, the account that made it, and the IP address it came from (shortened by default). Records are deleted after 90 days unless the site owner chooses another period. A user can ask for an export of their records, or for their name and IP address to be removed from them.', 'activity-log-with-undo' ) . '</p>'
+			. '<p>' . esc_html__( 'If the site owner sets up alert rules, the email addresses that get alerts are kept with the rule until it is deleted, and a message about a change is sent to those addresses or to a webhook the owner chose. A message only describes what its reader may edit on the site. An address can be exported or removed from the rules with the personal data tools.', 'activity-log-with-undo' ) . '</p>'
 		);
 	}
 }

@@ -75,3 +75,49 @@ add_filter(
 
 // Application passwords on the plain HTTP test site.
 add_filter( 'wp_is_application_passwords_available', '__return_true' );
+
+// Alerts: keep every email and webhook request instead of sending it, and answer the webhook with a 200.
+add_filter(
+	'pre_wp_mail',
+	static function ( $short, $atts ) {
+		if ( ! get_option( 'alu_e2e_capture' ) ) {
+			return $short;
+		}
+		$log   = (array) get_option( 'alu_e2e_mails', array() );
+		$log[] = array(
+			'to'      => (string) $atts['to'],
+			'subject' => (string) $atts['subject'],
+			'message' => (string) $atts['message'],
+		);
+		update_option( 'alu_e2e_mails', $log, false );
+		return true;
+	},
+	10,
+	2
+);
+add_filter(
+	'pre_http_request',
+	static function ( $pre, $args, $url ) {
+		if ( ! get_option( 'alu_e2e_capture' ) || false === strpos( $url, 'hooks.slack.com' ) ) {
+			return $pre;
+		}
+		$log   = (array) get_option( 'alu_e2e_posts', array() );
+		$log[] = array(
+			'url'  => $url,
+			'body' => (string) $args['body'],
+		);
+		update_option( 'alu_e2e_posts', $log, false );
+		return array(
+			'headers'  => array(),
+			'body'     => 'ok',
+			'response' => array(
+				'code'    => (int) get_option( 'alu_e2e_webhook_code', 200 ),
+				'message' => 'OK',
+			),
+			'cookies'  => array(),
+			'filename' => null,
+		);
+	},
+	10,
+	3
+);
