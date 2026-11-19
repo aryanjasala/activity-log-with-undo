@@ -8,14 +8,23 @@
 namespace AryanX\Axle\ActivityLogWithUndo\Recorders;
 
 use AryanX\Axle\ActivityLogWithUndo\Entry;
+use AryanX\Axle\ActivityLogWithUndo\Integrations\Siblings;
 
 defined( 'ABSPATH' ) || exit;
 
 /**
- * A theme switch can be reversed while the old theme is still installed.
- * Installs, updates and deletions are logged only.
+ * A theme switch can be reversed while the old theme is still installed. So
+ * can an update, when Axle Smoke Test saved the old version first. Installs
+ * and deletions are logged only.
  */
 final class ThemesRecorder extends BaseRecorder {
+
+	/**
+	 * Versions before an update, keyed by theme folder.
+	 *
+	 * @var array<string, string>
+	 */
+	private array $versions = array();
 
 	/**
 	 * Recorder ID.
@@ -54,6 +63,7 @@ final class ThemesRecorder extends BaseRecorder {
 	 */
 	public function register(): void {
 		add_action( 'switch_theme', array( $this, 'switched' ), 10, 3 );
+		add_filter( 'upgrader_pre_install', array( $this, 'before_install' ), 5, 2 );
 		add_action( 'upgrader_process_complete', array( $this, 'upgraded' ), 10, 2 );
 		add_action( 'deleted_theme', array( $this, 'deleted' ), 10, 2 );
 	}
@@ -70,6 +80,22 @@ final class ThemesRecorder extends BaseRecorder {
 		$new = $new_theme instanceof \WP_Theme ? $new_theme->get_stylesheet() : get_stylesheet();
 
 		$this->record( 'theme_switched', 'theme', $new, (string) $new_name, array( 'stylesheet' => $old ), array( 'stylesheet' => $new ), '' !== $old );
+	}
+
+	/**
+	 * Remembers the version a theme has before an update replaces it.
+	 *
+	 * @param mixed $response   Result so far; returned untouched.
+	 * @param mixed $hook_extra What the upgrader is working on.
+	 * @return mixed
+	 */
+	public function before_install( $response, $hook_extra = array() ) {
+		$theme = is_array( $hook_extra ) && ! empty( $hook_extra['theme'] ) ? (string) $hook_extra['theme'] : '';
+		if ( '' !== $theme && ! isset( $this->versions[ $theme ] ) ) {
+			$this->versions[ $theme ] = (string) wp_get_theme( $theme )->get( 'Version' );
+		}
+
+		return $response;
 	}
 
 	/**
@@ -92,9 +118,15 @@ final class ThemesRecorder extends BaseRecorder {
 			return;
 		}
 
-		foreach ( isset( $extra['themes'] ) ? (array) $extra['themes'] : array() as $stylesheet ) {
-			$theme = wp_get_theme( (string) $stylesheet );
-			$this->record( 'theme_updated', 'theme', $stylesheet, (string) $theme->get( 'Name' ), null, array( 'version' => (string) $theme->get( 'Version' ) ), false );
+		$themes = isset( $extra['themes'] ) ? (array) $extra['themes'] : ( isset( $extra['theme'] ) ? array( $extra['theme'] ) : array() );
+		foreach ( $themes as $stylesheet ) {
+			$stylesheet = (string) $stylesheet;
+			$theme      = wp_get_theme( $stylesheet );
+			$old        = $this->versions[ $stylesheet ] ?? '';
+			unset( $this->versions[ $stylesheet ] );
+			$new = (string) $theme->get( 'Version' );
+			// Undoable only when the files of the old version were saved before the update.
+			$this->record( 'theme_updated', 'theme', $stylesheet, (string) $theme->get( 'Name' ), '' !== $old ? array( 'version' => $old ) : null, array( 'version' => $new ), '' !== $old && $old !== $new && null !== Siblings::smoke_backup( 'theme', $stylesheet, $old ) );
 		}
 	}
 
@@ -121,7 +153,7 @@ final class ThemesRecorder extends BaseRecorder {
 			case 'theme_installed':
 				return self::refuse( __( 'Installs are logged only. Delete the theme under Appearance > Themes if you do not want it.', 'activity-log-with-undo' ) );
 			case 'theme_updated':
-				return self::refuse( __( 'WordPress keeps no copy of the old version, so an update cannot be reversed here.', 'activity-log-with-undo' ) );
+				return $this->can_undo_update( $entry );
 			case 'theme_deleted':
 				return self::refuse( __( 'The theme files are gone. Install the theme again to get it back.', 'activity-log-with-undo' ) );
 		}
@@ -141,6 +173,10 @@ final class ThemesRecorder extends BaseRecorder {
 	 * @return array
 	 */
 	public function current_state( Entry $entry ): array {
+		if ( 'theme_updated' === $entry->event ) {
+			return array( 'version' => (string) wp_get_theme( $entry->object_id )->get( 'Version' ) );
+		}
+
 		return array( 'stylesheet' => get_stylesheet() );
 	}
 
@@ -151,9 +187,69 @@ final class ThemesRecorder extends BaseRecorder {
 	 * @return true
 	 */
 	public function undo( Entry $entry ) {
+		if ( 'theme_updated' === $entry->event ) {
+			return $this->undo_update( $entry );
+		}
 		switch_theme( (string) ( (array) $entry->before() )['stylesheet'] );
 
 		return true;
+	}
+
+	/**
+	 * Whether an update can be reversed: the user may update themes, and Smoke Test still has the zip.
+	 *
+	 * @param Entry $entry Entry.
+	 * @return true|\WP_Error
+	 */
+	private function can_undo_update( Entry $entry ) {
+		$old = (string) ( ( (array) $entry->before() )['version'] ?? '' );
+		if ( '' === $old ) {
+			return self::refuse( __( 'The version before this update was not recorded, so it cannot be reversed here.', 'activity-log-with-undo' ) );
+		}
+		if ( ! current_user_can( 'update_themes' ) && ! ( defined( 'WP_CLI' ) && WP_CLI && ! is_user_logged_in() ) ) {
+			return self::refuse( __( 'You are not allowed to change themes.', 'activity-log-with-undo' ) );
+		}
+		if ( ! Siblings::smoke_rollback() ) {
+			return self::refuse( __( 'WordPress keeps no copy of the old version. Axle Smoke Test saves one before each update; activate it to reverse updates.', 'activity-log-with-undo' ) );
+		}
+		if ( null === Siblings::smoke_backup( 'theme', $entry->object_id, $old ) ) {
+			/* translators: %s: version number. */
+			return self::refuse( sprintf( __( 'No copy of version %s is saved any more, so the update cannot be reversed here.', 'activity-log-with-undo' ), $old ) );
+		}
+
+		return parent::can_undo( $entry );
+	}
+
+	/**
+	 * Puts the files of the old version back, through Axle Smoke Test.
+	 *
+	 * @param Entry $entry Entry.
+	 * @return true|\WP_Error
+	 */
+	private function undo_update( Entry $entry ) {
+		$old      = (string) ( ( (array) $entry->before() )['version'] ?? '' );
+		$backup   = Siblings::smoke_backup( 'theme', $entry->object_id, $old );
+		$rollback = Siblings::smoke_rollback();
+		if ( ! $backup || ! $rollback || ! method_exists( $rollback, 'restore' ) ) {
+			return $this->can_undo_update( $entry );
+		}
+
+		$result = $rollback->restore(
+			array(
+				'type'    => 'theme',
+				'id'      => $entry->object_id,
+				'slug'    => $entry->object_id,
+				'name'    => $entry->object_label,
+				'current' => (string) wp_get_theme( $entry->object_id )->get( 'Version' ),
+				'version' => $old,
+				'backup'  => $backup,
+			)
+		);
+		if ( function_exists( 'wp_clean_themes_cache' ) ) {
+			wp_clean_themes_cache( true );
+		}
+
+		return $result instanceof \WP_Error ? $result : true;
 	}
 
 	/**
@@ -175,7 +271,15 @@ final class ThemesRecorder extends BaseRecorder {
 				return sprintf( __( 'Installed the %s theme', 'activity-log-with-undo' ), $name );
 			case 'theme_updated':
 				/* translators: %s: theme name. */
-				return sprintf( __( 'Updated the %s theme', 'activity-log-with-undo' ), $name );
+				$text = sprintf( __( 'Updated the %s theme', 'activity-log-with-undo' ), $name );
+				$old  = (string) ( ( (array) $entry->before() )['version'] ?? '' );
+				$new  = (string) ( ( (array) $entry->after() )['version'] ?? '' );
+				if ( '' !== $old && '' !== $new ) {
+					/* translators: 1: theme description, 2: old version, 3: new version. */
+					$text = sprintf( __( '%1$s from %2$s to %3$s', 'activity-log-with-undo' ), $text, $old, $new );
+				}
+
+				return $text;
 			default:
 				/* translators: %s: theme folder. */
 				return sprintf( __( 'Deleted the %s theme', 'activity-log-with-undo' ), $name );

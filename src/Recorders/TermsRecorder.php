@@ -322,7 +322,8 @@ final class TermsRecorder extends BaseRecorder {
 	public function deleted( $term_id, $tt_id, $taxonomy ): void {
 		$snapshot = $this->deleting[ (int) $term_id ] ?? null;
 		unset( $this->deleting[ (int) $term_id ] );
-		if ( ! $snapshot ) {
+		// A merge is logged as one merge by the Siblings recorder, with the trash item that undoes it.
+		if ( ! $snapshot || $this->trash->merging() ) {
 			return;
 		}
 

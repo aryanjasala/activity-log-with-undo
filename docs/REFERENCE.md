@@ -5,11 +5,12 @@
 | Recorder | Events | Undo |
 | --- | --- | --- |
 | Settings and widgets (`options`) | `option_added`, `option_updated`, `option_deleted`, and on multisite `network_option_*`, for settings only (see below) | Writes the old value back, removes an added option, adds a deleted one back. A deleted network option is logged only: WordPress has no hook to read it first |
-| Plugins (`plugins`) | `plugin_activated`, `plugin_deactivated`, `plugin_installed`, `plugin_updated`, `plugin_deleted` | Switches the plugin back. Installs, updates and deletions are logged only, because WordPress keeps no copy of the old files |
-| Themes (`themes`) | `theme_switched`, `theme_installed`, `theme_updated`, `theme_deleted` | Switches back while the old theme is still installed. The rest is logged only |
+| Plugins (`plugins`) | `plugin_activated`, `plugin_deactivated`, `plugin_installed`, `plugin_updated`, `plugin_deleted` | Switches the plugin back. An update records the version it replaced (`upgrader_pre_install`) and can be undone when Axle Smoke Test is active and still has its zip of that version: the old files go back, the database changes of the new version do not. Installs and deletions are logged only, because WordPress keeps no copy of the files |
+| Themes (`themes`) | `theme_switched`, `theme_installed`, `theme_updated`, `theme_deleted` | Switches back while the old theme is still installed. An update is undone through Axle Smoke Test, as for plugins. Installs and deletions are logged only |
 | Users and roles (`users`) | `user_role_changed`, `user_updated` (display name, email, website), `user_created`, `user_deleted` | Restores the old set of roles or the old fields. A new user is deleted, with their content given to whoever added them (or to you). Deleted users are logged only |
-| Content (`posts`) | `post_created`, `post_status_changed`, `post_trashed`, `post_untrashed`, `post_updated` (title, content, excerpt), `post_attributes_changed` (slug, parent, author), `post_featured_image_changed`, `post_template_changed`, `post_deleted` | Puts the status back; a trashed post returns to its old status. Content edits come back through the matching revision, or the stored fields when there is none. Slug, parent, author, featured image and template are reset. Permanent deletions are logged only |
+| Content (`posts`) | `post_created`, `post_status_changed`, `post_trashed`, `post_untrashed`, `post_updated` (title, content, excerpt), `post_attributes_changed` (slug, parent, author, password), `post_featured_image_changed`, `post_template_changed`, `post_terms_changed` (one taxonomy at a time; adding to a post's terms is not logged), `post_sticky_changed`, `post_deleted` | Puts the status back; a trashed post returns to its old status. Content edits come back through the matching revision, or the stored fields when there is none. Slug, parent, author, password, featured image, template, terms and sticky are reset. Permanent deletions are logged only |
 | Terms (`terms`) | `term_created`, `term_updated`, `term_deleted` | Deletes a new term, restores name, slug, description and parent, and rebuilds a deleted term with its meta, posts and child terms. With Category & Tag Trash active, a deleted term is restored from its trash instead |
+| Other Axle plugins (`siblings`) | `ctt_merged`, `ctt_restored`, `leftovers_trashed`, `leftovers_restored`, `config_sync_applied`, `block_restore_applied`, logged only while the plugin that makes them is active | A merge is undone by Category & Tag Trash restoring the merged-away term; trashed leftovers by Leftovers restoring the batch; a Config Sync apply by Config Sync undoing the change set. Restores and Block Restore are logged only (the term and the post edit are logged as their own changes) |
 | Menus (`menus`) | `menu_created`, `menu_updated`, `menu_deleted` | Puts the whole menu back as it was before the save: removed items come back (with new IDs, children still under them), added items go, the rest is reset |
 | Site Editor (`site_editor`) | `site_editor_created`, `site_editor_updated`, `site_editor_deleted` for global styles, templates, template parts and navigation | Restores the previous revision (or the stored content), deletes a new customization so the theme's own version shows again, and brings back one that was cleared |
 | Network sites (`network`, multisite only) | `site_created`, `site_deleted` | Logged only, on the main site |
@@ -36,6 +37,10 @@ Always left out, whatever the lists say: transients, cron, rewrite rules, locks,
 ### Upgrading from 1.0.0
 
 Version 1.0.0 logged every option. The first time an administrator opens wp-admin after the update, a notice counts the entries of options that are not settings (for example `block_doctor_index`) and offers to delete them. Deleting runs in batches of 500, the rest through WP-Cron. **Keep them** hides the notice. `wp activity-log-with-undo cleanup` does the same, with `--dry-run` to see the list first. Entries of internal options already in the log are never undone together with a person's change.
+
+## The post panel
+
+In the block editor, a "Activity on this post" panel in the sidebar lists the changes to that post that revisions do not keep, newest first: who, when, and Undo. It reads `GET /wp-json/activity-log-with-undo/v1/posts/<id>/activity` and undoes with `POST .../posts/<id>/activity/<entry>/undo`. Both routes need the right to edit that post (not the log capability), refuse a change that is not about that post, and undo only the change picked, not the rest of the request it was saved in. Changes a person may not see come back masked. After an undo the panel reads the post again and hands it to the editor's data store as the saved version, so the next Save does not write the old value back. Edits you have not saved yet are kept.
 
 ## Rolling back to a time
 
@@ -84,6 +89,13 @@ The undo is logged like any other change, with `undo_of` pointing at the entry i
 | Hook | Type | Use |
 | --- | --- | --- |
 | `activity_log_with_undo_capability` | filter | `( string $capability )`. Who can see the log and undo. Default `manage_options` |
+| `activity_log_with_undo_list_views` | filter | `( array $areas )`. The views above the log: key => `label` and `recorders` (recorder IDs). Default Settings, Plugins and themes, Users, Content, Other plugins |
+| `activity_log_with_undo_entry_links` | filter | `( array $links, Entry $entry )`. Links from an entry to other plugins ("See what it left", "Open it in the Category & Tag Trash"): key => `label` and `url`. Only added for people who may see the entry |
+| `activity_log_with_undo_admin_bar_label` | filter | `( string $label, string $description )`. The label of the admin bar item. Default `Undo: ` and a short, lower-cased description of the change |
+| `activity_log_with_undo_show_post_panel` | filter | `( bool $show, string $post_type )`. Whether the editor shows "Activity on this post". Default true for logged post types |
+| `activity_log_with_undo_post_panel_allowed` | filter | `( bool $allowed, WP_Post $post )`. Whether a user may see and undo a post's activity in the editor, after the right to edit that post. Each entry is still checked with `activity_log_with_undo_can_view_entry` |
+| `activity_log_with_undo_post_panel_limit` | filter | `( int $limit )`. How many changes the panel lists for one post. Default 20, at most 100 |
+| `activity_log_with_undo_panel_undone` | action | `( int $post_id, Entry $entry, array $result )`. A change was undone from the editor panel |
 | `activity_log_with_undo_recorders` | filter | `( Recorder[] $recorders )`. Add your own recorder (anything implementing `AryanX\Axle\ActivityLogWithUndo\Recorders\Recorder`) or remove one. Keyed by recorder ID |
 | `activity_log_with_undo_ignored_options` | filter | `( string[] $patterns )`. Options never logged. `*` matches anything. The plugin's own options stay ignored whatever this returns |
 | `activity_log_with_undo_logged_options` | filter | `( string[] $patterns )`. Options always logged, in every request, on top of the settings. Default none. `*` matches anything |
@@ -192,6 +204,8 @@ The log screen runs `wp.hooks`, read when needed, so scripts that load later can
 | Hook | Type | Use |
 | --- | --- | --- |
 | `activityLogWithUndo.confirmMessage` | filter | `( message, context )`. What the in-place confirm step says will change before an undo. Return `''` to undo without asking. `context`: `entryId`, `force`, `redo`, `count`, `deletesUser`, `also` (descriptions of the other changes it undoes) |
+| `activityLogWithUndo.panelConfirmMessage` | filter | `( message, entry )`. The question the editor panel asks before an undo |
+| `activityLogWithUndo.panelUndone` | action | `( entry )`. A change was undone from the editor panel, after the editor was refreshed |
 | `activityLogWithUndo.undone` | action | `( result, context )`. An undo finished, before the log reloads. `result`: `undone`, `failed`, `entries`, `forced`, `redirect` |
 | `activityLogWithUndo.rollbackProgress` | action | `( state )`. After each batch of a roll back: `state`, `done`, `total`, `undone`, `skipped`, `summary`, `deferred` |
 | `activityLogWithUndo.rollbackDone` | action | `( state )`. A roll back ended, before the log reloads |
@@ -205,11 +219,12 @@ wp.hooks.addFilter( 'activityLogWithUndo.confirmMessage', 'my-plugin', ( message
 
 ## Abilities
 
-On WordPress 6.9 and later, Activity Log with Undo registers [abilities](https://developer.wordpress.org/apis/abilities/), so AI agents can use them through the [MCP adapter](https://github.com/WordPress/mcp-adapter) and anything else through the REST API under `/wp-abilities/v1/`. Each one is marked public, which the MCP adapter needs before it lists an ability. All of them need the log capability (the alert abilities need the alerts capability, which defaults to it), and each change is checked against the object it is about: an entry you may not edit comes back with `masked: true` and no object name, values or IP address, and cannot be undone. `run-rollback` also needs the roll back capability.
+On WordPress 6.9 and later, Activity Log with Undo registers [abilities](https://developer.wordpress.org/apis/abilities/), so AI agents can use them through the [MCP adapter](https://github.com/WordPress/mcp-adapter) and anything else through the REST API under `/wp-abilities/v1/`. Each one is marked public, which the MCP adapter needs before it lists an ability. All of them need the log capability (`list-post-activity` needs the right to edit the post instead, and the alert abilities need the alerts capability, which defaults to it), and each change is checked against the object it is about: an entry you may not edit comes back with `masked: true` and no object name, values or IP address, and cannot be undone. `run-rollback` also needs the roll back capability.
 
 | Ability | Does |
 | --- | --- |
 | `activity-log-with-undo/list-activity` | Read-only. Changes, newest first. Input: `event`, `object_type`, `object`, `user`, `via`, `since`, `until`, `search`, `undoable_only`, `limit`, `page` |
+| `activity-log-with-undo/list-post-activity` | Read-only. The changes to one post that revisions do not keep (status, slug, author, template, featured image, terms, sticky, password), newest first. Needs the right to edit that post, not the log capability. Input: `post_id`, `limit` |
 | `activity-log-with-undo/get-entry` | Read-only. One change with `before`, `after`, `can_undo`, `reason`, `changed_since`, `conflicts` and `change_count`. Input: `id` |
 | `activity-log-with-undo/preview-rollback` | Read-only. Every change since a moment, newest first, each marked `will`, `blocked` (with the reason) or `conflict`, with counts. Input: `to` (a time in the site time zone, a preset `hour`, `morning`, `yesterday`, or a log entry number for "just before it"), `user`, `area` |
 | `activity-log-with-undo/run-rollback` | Destructive. Undoes everything since that moment, newest first, and logs it as one entry that can be redone. Clashes are skipped and reported unless `stop_on_conflict` is true. After `activity_log_with_undo_rollback_time_budget` seconds it answers `state: running` with a `job`; call again with `job` to continue |
@@ -227,6 +242,7 @@ With [Agent Governance](https://github.com/aryanjasala/agent-governance) active,
 ```sh
 wp activity-log-with-undo list [--event=<event>] [--user=<id|login|email>] [--via=<via>] [--object-type=<type>] [--object=<id|name>] [--since=<date>] [--until=<date>] [--search=<text>] [--undoable] [--per-page=<n>] [--page=<n>] [--fields=<fields>] [--format=table|csv|json|yaml|count|ids]
 wp activity-log-with-undo show <id> [--format=table|json|yaml]
+wp activity-log-with-undo post-activity <post_id> [--limit=<n>] [--fields=<fields>] [--format=table|csv|json|yaml|count|ids]
 wp activity-log-with-undo undo <id>... [--force] [--yes]
 wp activity-log-with-undo rollback --to=<time|id> [--user=<id|login|email>] [--area=<area>] [--stop-on-conflict] [--dry-run] [--yes] [--format=table|csv|json|yaml]
 wp activity-log-with-undo purge [--older-than=<days>]
@@ -241,7 +257,7 @@ wp activity-log-with-undo alerts test <id>
 wp activity-log-with-undo alerts digest
 ```
 
-Dates take `2026-10-01`, an ISO 8601 time or `"2 days ago"`. `purge --older-than=0` empties the log. `rollback --to` takes a time (`"2026-11-13 14:00"`, `"2 hours ago"`) or a log entry number, meaning just before that change. It prints what it would undo, asks, undoes in batches, and logs one entry; `undo` that entry to redo everything. `--area` is one of `options`, `plugins`, `themes`, `users`, `posts`, `terms`, `menus`, `site_editor`. `undo` lists the other changes saved together and asks before undoing them all, and undoing a new user asks first too, unless `--yes`. Run it with `--user=<login>` so their content has someone to go to. `alerts add` is off unless you pass `--enable`; `--starter` copies one of the starter rules (`new-administrator`, `plugin-removed`, `theme-switched`, `site-address`, `registration-on`, `default-role`). A webhook URL is read when you add the rule and is never printed again. `alerts digest` sends the daily digests now. `cleanup` deletes old entries of options that are not settings (see Upgrading from 1.0.0). Settings registered only in wp-admin are unknown to WP-CLI, so check its list before you confirm.
+Dates take `2026-10-01`, an ISO 8601 time or `"2 days ago"`. `purge --older-than=0` empties the log. `rollback --to` takes a time (`"2026-11-13 14:00"`, `"2 hours ago"`) or a log entry number, meaning just before that change. It prints what it would undo, asks, undoes in batches, and logs one entry; `undo` that entry to redo everything. `--area` is one of `options`, `plugins`, `themes`, `users`, `posts`, `terms`, `menus`, `site_editor`, `siblings`. `post-activity` lists the changes the editor panel shows for one post. `undo` lists the other changes saved together and asks before undoing them all, and undoing a new user asks first too, unless `--yes`. Run it with `--user=<login>` so their content has someone to go to. `alerts add` is off unless you pass `--enable`; `--starter` copies one of the starter rules (`new-administrator`, `plugin-removed`, `theme-switched`, `site-address`, `registration-on`, `default-role`). A webhook URL is read when you add the rule and is never printed again. `alerts digest` sends the daily digests now. `cleanup` deletes old entries of options that are not settings (see Upgrading from 1.0.0). Settings registered only in wp-admin are unknown to WP-CLI, so check its list before you confirm.
 
 ## PHP API
 

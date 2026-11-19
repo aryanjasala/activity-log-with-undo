@@ -116,6 +116,8 @@ final class Access {
 			case 'user':
 				return $num && get_userdata( $num ) ? current_user_can( 'edit_user', $num ) : current_user_can( 'list_users' );
 			case 'rollback':
+			case 'leftovers':
+			case 'config_sync':
 				return current_user_can( 'manage_options' );
 		}
 

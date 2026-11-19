@@ -93,6 +93,7 @@ namespace AryanX\Axle\ActivityLogWithUndo\Tests\Unit {
 		public $post_name    = '';
 		public $post_parent  = 0;
 		public $post_author  = 0;
+		public $post_password = "";
 		public $menu_order   = 0;
 	}
 }

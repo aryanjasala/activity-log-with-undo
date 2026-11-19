@@ -204,6 +204,38 @@ final class Entry {
 	}
 
 	/**
+	 * The state before the change, as it may be shown: a post password is never printed, mailed or returned.
+	 *
+	 * @return mixed
+	 */
+	public function shown_before() {
+		return self::redact( $this->before() );
+	}
+
+	/**
+	 * The state after the change, as it may be shown.
+	 *
+	 * @return mixed
+	 */
+	public function shown_after() {
+		return self::redact( $this->after() );
+	}
+
+	/**
+	 * Replaces a post password in a state with a word.
+	 *
+	 * @param mixed $state State.
+	 * @return mixed
+	 */
+	private static function redact( $state ) {
+		if ( is_array( $state ) && isset( $state['post_password'] ) && '' !== (string) $state['post_password'] ) {
+			$state['post_password'] = __( '(a password)', 'activity-log-with-undo' );
+		}
+
+		return $state;
+	}
+
+	/**
 	 * Whether a later entry reversed this one.
 	 *
 	 * @return bool
@@ -297,8 +329,8 @@ final class Entry {
 		);
 
 		if ( $with_states ) {
-			$data['before'] = $this->before();
-			$data['after']  = $this->after();
+			$data['before'] = $this->shown_before();
+			$data['after']  = $this->shown_after();
 		}
 
 		return $data;

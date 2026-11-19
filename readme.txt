@@ -19,13 +19,14 @@ Activity Log with Undo logs each change together with what it was before, and gi
 What it logs, and what Undo does:
 
 * **Settings and widgets**: the settings people change on purpose. That is everything on the core Settings screens, permalinks, the privacy page, widgets, Customizer settings, and options plugins register with the Settings API. Undo writes the old value back. Other plugins' caches, indexes and counters are left out, and so are settings changed by a cron job or a visitor's page view.
-* **Plugins**: activation and deactivation, undone by switching back. Installs, updates and deletions are logged only, because WordPress keeps no copy of the old files.
-* **Themes**: a theme switch, undone by switching back while the old theme is still installed.
+* **Plugins**: activation and deactivation, undone by switching back. An update is logged with the version it replaced. When Axle Smoke Test is active and still holds its copy of that version, the update gets an Undo that puts the old files back (the database stays as the new version left it). Installs and deletions are logged only, because WordPress keeps no copy of the files. A deleted plugin links to Leftovers, so you can see what it left behind.
+* **Themes**: a theme switch, undone by switching back while the old theme is still installed. Theme updates are handled like plugin updates.
 * **Users**: role changes, display name, email and website, all undoable. Undoing a new user deletes the account and gives their content to whoever added them, after you confirm. Deleted users are logged only.
-* **Posts, pages and other content**: publish, unpublish, trash and restore, edits to the title, content and excerpt, and changes to the slug, parent, author, featured image and template. Content edits come back through the matching revision when the post has one.
+* **Posts, pages and other content**: publish, unpublish, trash and restore, edits to the title, content and excerpt, and changes to the slug, parent, author, password, featured image, template, categories, tags and sticky. Content edits come back through the matching revision when the post has one.
 * **Categories, tags and other terms**: new, edited and deleted. A deleted term is rebuilt with its meta, posts and child terms. With Category & Tag Trash active, it is restored from that trash instead.
 * **Menus**: the whole menu with its items is kept before each save, and Undo puts it back.
 * **Site Editor**: global styles, templates, template parts and navigation. Undo restores the previous revision, removes a new customization, or brings back one you cleared.
+* **Other Axle plugins**: when they are active, merges in Category & Tag Trash, batches moved to the Leftovers trash and Config Sync applies are logged too, so a roll back includes them. Undo goes to the plugin that owns the change, which puts back its own data.
 
 Free and open source under the GPL. No pro version, no upsells, no ads in wp-admin, no tracking. And it stays that way.
 
@@ -44,6 +45,10 @@ Free and open source under the GPL. No pro version, no upsells, no ads in wp-adm
 
 The preview lists every change since then, newest first, grouped by area. Each one is marked as will be undone, cannot be undone (with the reason), or clashes with a later change that is not in the list. Nothing happens until you press the button. The run undoes the changes in small batches with a progress bar, skips clashes and tells you which, or stops at the first one if you ask. The roll back is logged as one entry, and Redo on it puts everything back.
 
+= This post's activity, in the editor =
+
+Open a post and look for "Activity on this post" in the sidebar. It lists the changes revisions do not keep: status, slug, author, template, featured image, categories and tags, sticky and password. Each line says who, when, and has an Undo. You need the right to edit that post to see it, and a change you may not see is hidden. After an Undo the editor reads the post again, so your next Save does not write the old value back.
+
 = Only what you may see =
 
 The log can be opened by people who cannot edit everything in it. An entry about a post, term, user or setting you are not allowed to edit shows as a hidden change, without its name, values or IP address, in the log, the REST API, the abilities and WP-CLI. You cannot undo it either.
@@ -58,14 +63,15 @@ Each message says who changed what, with the old and new value. Undo happens on 
 
 = Find a change =
 
-Tools > Activity Log lists every change with who made it and how: the dashboard, the REST API or block editor, an application password, WP-CLI, a scheduled task, XML-RPC or an AI agent through the Abilities API. Filter by event, user, source, dates and object, or search. Select several rows to undo them in one go.
+Tools > Activity Log lists every change with who made it and how: the dashboard, the REST API or block editor, an application password, WP-CLI, a scheduled task, XML-RPC or an AI agent through the Abilities API. Pick a view (All, Settings, Plugins and themes, Users, Content, Other plugins) or search. "More filters" opens event, user, source, dates and object. Undo is a link under each change. Select several rows to undo them in one go.
 
-Turn on "Undo last change" in the admin bar to undo your own most recent change from any screen.
+Turn on "Undo last change" in the admin bar to undo your own most recent change from any screen, phones included. The item says what it will undo, for example "Undo: changed Tagline".
 
 = From the command line =
 
 `wp activity-log-with-undo list --since="1 day ago" --undoable`
 `wp activity-log-with-undo show 42`
+`wp activity-log-with-undo post-activity 42`
 `wp activity-log-with-undo undo 42`
 `wp activity-log-with-undo undo 42 --force`
 `wp activity-log-with-undo rollback --to="2026-11-13 14:00" --dry-run`
@@ -77,7 +83,7 @@ Turn on "Undo last change" in the admin bar to undo your own most recent change 
 
 = For AI agents =
 
-On WordPress 6.9 and later, eight abilities let an agent list the activity, read one change with its before and after state, undo it, preview a roll back to a moment (read-only) and run it, list the alert rules, turn one on or off and send a test alert. None of them returns a webhook URL. Undo refuses when things changed since, unless the agent passes `force`.
+On WordPress 6.9 and later, nine abilities let an agent list the activity, list one post's activity, read one change with its before and after state and undo it. It can also preview a roll back (read-only) and run it, list the alert rules, turn one on or off and send a test alert. None of them returns a webhook URL. Undo refuses when things changed since, unless the agent passes `force`.
 
 With Agent Governance active, a change an agent made after someone approved its request says which agent it was, the request number, and who approved it.
 
@@ -93,7 +99,7 @@ Entries are kept for 90 days by default. IP addresses are shortened by default, 
 
 = Why can some changes not be undone? =
 
-Undo needs the state from before the change. Plugin and theme updates replace files WordPress does not keep, and a permanently deleted post or user is gone with everything attached to it. Those are logged, with the reason shown next to them. A change whose old value is bigger than the size limit (256 KB by default) is logged without it and cannot be undone either.
+Undo needs the state from before the change. Plugin and theme updates replace files WordPress does not keep (Axle Smoke Test can keep a copy before each update, and then they can be undone), and a permanently deleted post or user is gone with everything attached to it. Those are logged, with the reason shown next to them. A change whose old value is bigger than the size limit (256 KB by default) is logged without it and cannot be undone either.
 
 = What happens if someone changed it again after the entry? =
 
@@ -129,14 +135,19 @@ Version 1.0.0 logged every option, so other plugins' internal state could fill t
 
 = I use Category & Tag Trash. Who restores deleted terms? =
 
-Category & Tag Trash keeps deleted terms with their posts and menu links. When it is active, Undo restores the term from its trash, and the entry links to it.
+Category & Tag Trash keeps deleted terms with their posts and menu links. When it is active, Undo restores the term from its trash, and the entry links to it. A merge is one entry, and Undo puts the merged term and its posts back.
 
 == Screenshots ==
 
-1. Tools > Activity Log: every change with who made it, how, and an Undo button.
+1. Tools > Activity Log: views, search and every change with who made it, how, and an Undo link.
 2. One change with its before and after values side by side.
 3. A change that was changed again since: the differences, and Undo anyway.
 4. The settings: what to log, how long to keep it, and IP addresses.
+5. Undo asks first, in place, and says what else it puts back.
+6. Roll back: everything that changed since a moment, before anything happens.
+7. Alerts: rules and starter rules.
+8. The admin bar says what it will undo.
+9. Activity on this post, in the editor sidebar.
 
 == Changelog ==
 

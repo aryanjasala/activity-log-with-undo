@@ -21,10 +21,6 @@
 	text-decoration: none;
 }
 
-.alu-page .column-undo {
-	width: 130px;
-}
-
 .alu-page .column-user {
 	width: 160px;
 }
@@ -249,4 +245,80 @@
 	.alu-page .alu-starters li {
 		flex-wrap: wrap;
 	}
+}
+
+/* "More filters": search stays in view, the rest folds away. */
+.alu-page .alu-more {
+	flex-basis: 100%;
+}
+
+.alu-page .alu-more summary {
+	cursor: pointer;
+	padding: 4px 0;
+}
+
+.alu-page .alu-more__fields {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 0;
+}
+
+.alu-page .alu-more__fields label {
+	margin: 0;
+}
+
+.alu-page .alu-more__fields select,
+.alu-page .alu-more__fields input {
+	max-width: 100%;
+}
+
+@media screen and (max-width: 782px) {
+	.alu-page .alu-more__fields {
+		flex-direction: column;
+		align-items: stretch;
+	}
+}
+
+/* The log's views sit above the search, as on core list screens. */
+.alu-page .subsubsub {
+	float: none;
+	margin: 8px 0;
+}
+
+.alu-page .alu-undo--link {
+	text-decoration: underline;
+}
+
+/* Row actions: each link is at least 24 px tall, so they are easy to hit and pass the target size check. */
+.alu-page .row-actions a {
+	display: inline-block;
+	padding: 4px 3px;
+	line-height: 1.5;
+}
+
+/* Nothing in the toolbars is wider than the screen: a select is as wide as its longest option otherwise. */
+.alu-page select,
+.alu-page input[type="datetime-local"],
+.alu-page input[type="date"] {
+	max-width: 100%;
+}
+
+@media screen and (max-width: 782px) {
+	.alu-page .alu-filters .button,
+	.alu-page .alu-filters input[type="search"] {
+		max-width: 100%;
+	}
+
+	.alu-page .alu-more__fields select,
+	.alu-page .alu-more__fields input {
+		width: 100%;
+		box-sizing: border-box;
+	}
+}
+
+.alu-page .row-title {
+	display: inline-block;
+	padding: 4px 0;
 }

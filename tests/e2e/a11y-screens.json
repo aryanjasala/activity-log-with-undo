@@ -479,6 +479,99 @@
           "delete_option( 'activity_log_with_undo_alert_rules' ); delete_option( 'activity_log_with_undo_alert_secrets' ); delete_option( 'activity_log_with_undo_alert_state' );"
         ]
       ]
+    },
+    {
+      "name": "Tools > Activity Log, Settings view",
+      "setup": [
+        [
+          "eval",
+          "AryanX\\Axle\\ActivityLogWithUndo\\Plugin::instance()->store()->truncate();"
+        ],
+        [
+          "option",
+          "update",
+          "blogname",
+          "Kitchen Notes",
+          "--user=admin"
+        ]
+      ],
+      "url": "/wp-admin/tools.php?page=activity-log-with-undo&alu_area=settings"
+    },
+    {
+      "name": "Tools > Activity Log, More filters open",
+      "setup": [
+        [
+          "eval",
+          "AryanX\\Axle\\ActivityLogWithUndo\\Plugin::instance()->store()->truncate();"
+        ],
+        [
+          "option",
+          "update",
+          "blogname",
+          "Kitchen Notes",
+          "--user=admin"
+        ]
+      ],
+      "url": "/wp-admin/tools.php?page=activity-log-with-undo",
+      "steps": [
+        {
+          "click": ".alu-more summary"
+        },
+        {
+          "waitFor": "#alu-event"
+        }
+      ]
+    },
+    {
+      "name": "Post editor, Activity on this post panel open",
+      "setup": [
+        [
+          "eval",
+          "AryanX\\Axle\\ActivityLogWithUndo\\Plugin::instance()->store()->truncate();"
+        ],
+        {
+          "wp": [
+            "post",
+            "create",
+            "--post_title=Pricing",
+            "--post_status=publish",
+            "--porcelain",
+            "--user=admin"
+          ],
+          "save": "post"
+        },
+        [
+          "post",
+          "update",
+          "{post}",
+          "--post_status=draft",
+          "--user=admin"
+        ]
+      ],
+      "editor": "{post}",
+      "steps": [
+        {
+          "evaluate": "window.wp.data.dispatch( 'core/edit-post' ).openGeneralSidebar( 'edit-post/document' )"
+        },
+        {
+          "evaluate": "( () => { const b = [ ...document.querySelectorAll( 'button.components-panel__body-toggle' ) ].find( ( x ) => x.textContent.includes( 'Activity on this post' ) ); if ( b && 'false' === b.getAttribute( 'aria-expanded' ) ) { b.click(); } } )()"
+        },
+        {
+          "waitFor": ".alu-panel__entry"
+        }
+      ],
+      "include": [
+        ".alu-panel-wrap"
+      ],
+      "narrow": false,
+      "cleanup": [
+        [
+          "post",
+          "delete",
+          "{post}",
+          "--force"
+        ]
+      ]
     }
   ],
   "skip": {}

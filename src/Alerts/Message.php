@@ -139,8 +139,8 @@ final class Message {
 		}
 
 		$item['what']   = self::plain( $what );
-		$item['before'] = $this->value( $entry, $entry->before() );
-		$item['after']  = $this->value( $entry, $entry->after() );
+		$item['before'] = $this->value( $entry, $entry->shown_before() );
+		$item['after']  = $this->value( $entry, $entry->shown_after() );
 		$item['url']    = LogPage::url( array( 'entry' => $entry->id ) );
 		$item['masked'] = false;
 

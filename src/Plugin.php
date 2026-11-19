@@ -8,6 +8,7 @@
 namespace AryanX\Axle\ActivityLogWithUndo;
 
 use AryanX\Axle\ActivityLogWithUndo\Admin\AdminBar;
+use AryanX\Axle\ActivityLogWithUndo\Admin\EditorPanel;
 use AryanX\Axle\ActivityLogWithUndo\Admin\AlertsScreen;
 use AryanX\Axle\ActivityLogWithUndo\Alerts\AlertPrivacy;
 use AryanX\Axle\ActivityLogWithUndo\Alerts\Alerts;
@@ -28,10 +29,12 @@ use AryanX\Axle\ActivityLogWithUndo\Recorders\PluginsRecorder;
 use AryanX\Axle\ActivityLogWithUndo\Recorders\PostsRecorder;
 use AryanX\Axle\ActivityLogWithUndo\Recorders\Registry;
 use AryanX\Axle\ActivityLogWithUndo\Recorders\RollbackRecorder;
+use AryanX\Axle\ActivityLogWithUndo\Recorders\SiblingsRecorder;
 use AryanX\Axle\ActivityLogWithUndo\Recorders\SiteEditorRecorder;
 use AryanX\Axle\ActivityLogWithUndo\Recorders\TermsRecorder;
 use AryanX\Axle\ActivityLogWithUndo\Recorders\ThemesRecorder;
 use AryanX\Axle\ActivityLogWithUndo\Recorders\UsersRecorder;
+use AryanX\Axle\ActivityLogWithUndo\Rest\PostActivityController;
 use AryanX\Axle\ActivityLogWithUndo\Rest\UndoController;
 
 defined( 'ABSPATH' ) || exit;
@@ -153,15 +156,17 @@ final class Plugin {
 		$this->context  = new Context( $this->settings );
 		$this->logger   = new Logger( $this->store, $this->settings, $this->context );
 		$options        = new OptionsRecorder( $this->logger );
+		$ctt            = new CategoryTagTrash();
 		$recorders      = array(
 			$options,
 			new PluginsRecorder( $this->logger ),
 			new ThemesRecorder( $this->logger ),
 			new UsersRecorder( $this->logger ),
 			new PostsRecorder( $this->logger ),
-			new TermsRecorder( $this->logger, new CategoryTagTrash() ),
+			new TermsRecorder( $this->logger, $ctt ),
 			new MenusRecorder( $this->logger ),
 			new SiteEditorRecorder( $this->logger ),
+			new SiblingsRecorder( $this->logger, $ctt ),
 			new RollbackRecorder( $this->logger ),
 		);
 		if ( is_multisite() ) {
@@ -272,6 +277,8 @@ final class Plugin {
 			new Notices(),
 			new AdminBar( $this->store, $this->registry, $this->settings ),
 			new UndoController( $this->undoer, $this->rollback ),
+			new PostActivityController( $this->store, $this->registry, $this->undoer ),
+			new EditorPanel( $this->registry ),
 			new SiteHealth( $this->settings, $this->store, $this->rollback, $this->alert_rules ),
 			$abilities,
 		);

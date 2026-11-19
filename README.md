@@ -32,15 +32,17 @@ Activity logs tell you what changed. They do not help you put it back. Activity 
 ## Features
 
 - **Settings and widgets**: the settings people change on purpose, with the old value written back on Undo. Other plugins' caches, indexes and counters stay out of the log
-- **Plugins and themes**: activation, deactivation and theme switches undone; installs, updates and deletions logged with the reason they cannot be
+- **Plugins and themes**: activation, deactivation and theme switches undone. An update records the version it replaced; with Axle Smoke Test active and its saved copy still there, it gets an Undo that puts the old files back. Installs and deletions are logged with the reason they cannot be undone, and a deleted plugin or theme links to Leftovers ("See what it left")
 - **Users**: roles, display name, email and website restored; a new user can be removed, with their content kept
-- **Content**: status changes, trash, edits through the matching revision, slug, parent, author, featured image and template
+- **Content**: status changes, trash, edits through the matching revision, slug, parent, author, password, featured image, template, categories and tags, and sticky
+- **This post's activity, in the editor**: a panel in the post sidebar lists the changes revisions do not keep (status, slug, author, template, featured image, terms, sticky, password) with who, when and Undo. It needs the right to edit that post, and the editor is refreshed after an undo so the next Save does not write the old value back
 - **Terms and menus**: renamed or deleted terms rebuilt with their posts and meta, and whole menus put back as they were
+- **Other Axle plugins**: merges and restores in Category & Tag Trash, Leftovers trash batches, Config Sync applies and Block Restore are logged when those plugins are active, so a roll back includes them. Undo is handed to the plugin that owns the change
 - **Site Editor**: global styles, templates, template parts and navigation go back to the previous version
 - **Changed since?** Undo stops and shows the differences; **Undo anyway** overwrites the later change
 - **Roll back to a time**: pick 1 hour ago, this morning, yesterday, a time, or "just before this change". The preview lists every change since, newest first, grouped by area: will be undone, cannot be undone (with the reason), or clashes with a later change. One run puts it all back in small batches with progress, and one Redo undoes the roll back
 - **One save, one undo**: changes from one request are a change set, the confirm names every change it puts back, and the undo is logged too, so it can be redone
-- Filters, search, bulk undo, a before/after diff with names people know, "Undo last change" in the admin bar, WP-CLI, and abilities for AI agents. With Agent Governance, an approved agent change says which agent and who approved it
+- Core-style views (All, Settings, Plugins and themes, Users, Content, Other plugins), search with a "More filters" disclosure, Undo as a row action, bulk undo, a before/after diff with names people know, "Undo: changed Tagline" in the admin bar (visible on phones too), WP-CLI, and abilities for AI agents. With Agent Governance, an approved agent change says which agent and who approved it
 - **Only what you may see**: entries about a post, term, user or setting you are not allowed to edit show as a hidden change, with no name or values, in the screen, the REST route, the abilities and WP-CLI, and you cannot undo them
 - **Alerts and a daily digest**: rules by event, area, user or role, and "only outside working hours", with six starter rules (new administrator, plugin deactivated or deleted, theme switched, site address changed, anyone can register turned on, default role changed), off until you turn them on. Email and webhook (JSON or Slack format), right away or as a daily digest, one message for a bulk change, a Send a test button per rule. Each message names who, what, before and after and links to the entry; Undo stays on the site. Webhook URLs are never shown again or returned by abilities, and nobody is told about something they may not edit
 
@@ -79,12 +81,23 @@ wp activity-log-with-undo alerts test <id>
 
 <table>
   <tr>
-    <td width="50%" valign="top"><img src=".wordpress-org/screenshot-1.png" alt="Tools > Activity Log: every change with who made it, how, and an Undo button"><br><sub>Tools > Activity Log: every change with who made it, how, and an Undo button</sub></td>
+    <td width="50%" valign="top"><img src=".wordpress-org/screenshot-1.png" alt="Tools > Activity Log: views, search and every change with who made it, how, and an Undo link"><br><sub>Tools > Activity Log: views, search and every change with who made it, how, and an Undo link</sub></td>
     <td width="50%" valign="top"><img src=".wordpress-org/screenshot-2.png" alt="One change with its before and after values side by side"><br><sub>One change with its before and after values side by side</sub></td>
   </tr>
   <tr>
     <td width="50%" valign="top"><img src=".wordpress-org/screenshot-3.png" alt="A change that was changed again since: the differences, and Undo anyway"><br><sub>A change that was changed again since: the differences, and Undo anyway</sub></td>
     <td width="50%" valign="top"><img src=".wordpress-org/screenshot-4.png" alt="The settings: what to log, how long to keep it, and IP addresses"><br><sub>The settings: what to log, how long to keep it, and IP addresses</sub></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><img src=".wordpress-org/screenshot-5.png" alt="Undo asks first, in place, and says what else it puts back"><br><sub>Undo asks first, in place, and says what else it puts back</sub></td>
+    <td width="50%" valign="top"><img src=".wordpress-org/screenshot-6.png" alt="Roll back: everything that changed since a moment, before anything happens"><br><sub>Roll back: everything that changed since a moment, before anything happens</sub></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><img src=".wordpress-org/screenshot-7.png" alt="Alerts: rules and starter rules"><br><sub>Alerts: rules and starter rules</sub></td>
+    <td width="50%" valign="top"><img src=".wordpress-org/screenshot-8.png" alt="The admin bar says what it will undo"><br><sub>The admin bar says what it will undo</sub></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><img src=".wordpress-org/screenshot-9.png" alt="Activity on this post, in the editor sidebar"><br><sub>Activity on this post, in the editor sidebar</sub></td>
   </tr>
 </table>
 

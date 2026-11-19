@@ -11,6 +11,7 @@ use AryanX\Axle\ActivityLogWithUndo\Access;
 use AryanX\Axle\ActivityLogWithUndo\Context;
 use AryanX\Axle\ActivityLogWithUndo\Rollback;
 use AryanX\Axle\ActivityLogWithUndo\Entry;
+use AryanX\Axle\ActivityLogWithUndo\Integrations\Handoff;
 use AryanX\Axle\ActivityLogWithUndo\Recorders\Registry;
 use AryanX\Axle\ActivityLogWithUndo\Store;
 use AryanX\Axle\ActivityLogWithUndo\Undoer;
@@ -101,8 +102,10 @@ final class EntriesTable extends \WP_List_Table {
 	 */
 	public static function query_args(): array {
 		$user = self::filter( 'alu_user' );
+		$area = self::areas()[ sanitize_key( self::filter( 'alu_area' ) ) ] ?? null;
 
 		return array(
+			'recorder'   => $area ? $area['recorders'] : '',
 			'event'      => sanitize_key( self::filter( 'alu_event' ) ),
 			'via'        => in_array( self::filter( 'alu_via' ), Context::VIAS, true ) ? self::filter( 'alu_via' ) : '',
 			'user'       => '' === $user ? '' : (int) $user,
@@ -112,6 +115,93 @@ final class EntriesTable extends \WP_List_Table {
 			'change_set' => preg_match( '/^[a-f0-9]{32}$/', self::filter( 'alu_set' ) ) ? self::filter( 'alu_set' ) : '',
 			'search'     => self::filter( 's' ),
 		);
+	}
+
+	/**
+	 * The views above the list: groups of recorders.
+	 *
+	 * @return array<string, array{label: string, recorders: string[]}>
+	 */
+	public static function areas(): array {
+		$areas = array(
+			'settings' => array(
+				'label'     => __( 'Settings', 'activity-log-with-undo' ),
+				'recorders' => array( 'options', 'network' ),
+			),
+			'plugins'  => array(
+				'label'     => __( 'Plugins and themes', 'activity-log-with-undo' ),
+				'recorders' => array( 'plugins', 'themes' ),
+			),
+			'users'    => array(
+				'label'     => __( 'Users', 'activity-log-with-undo' ),
+				'recorders' => array( 'users' ),
+			),
+			'content'  => array(
+				'label'     => __( 'Content', 'activity-log-with-undo' ),
+				'recorders' => array( 'posts', 'terms', 'menus', 'site_editor' ),
+			),
+			'other'    => array(
+				'label'     => __( 'Other plugins', 'activity-log-with-undo' ),
+				'recorders' => array( 'siblings' ),
+			),
+		);
+
+		/**
+		 * Filters the views above the activity log list (All, Settings, Plugins and themes, ...).
+		 *
+		 * @param array $areas Key => array( 'label' => string, 'recorders' => recorder IDs ).
+		 */
+		$filtered = (array) apply_filters( 'activity_log_with_undo_list_views', $areas );
+
+		$out = array();
+		foreach ( $filtered as $key => $area ) {
+			$key = sanitize_key( (string) $key );
+			if ( '' !== $key && is_array( $area ) && ! empty( $area['label'] ) && ! empty( $area['recorders'] ) ) {
+				$out[ $key ] = array(
+					'label'     => (string) $area['label'],
+					'recorders' => array_values( array_map( 'sanitize_key', (array) $area['recorders'] ) ),
+				);
+			}
+		}
+
+		return $out;
+	}
+
+	/**
+	 * Core-style views: All and one per area, each with its count.
+	 *
+	 * @return array<string, string>
+	 */
+	protected function get_views(): array {
+		$current = sanitize_key( self::filter( 'alu_area' ) );
+		$current = isset( self::areas()[ $current ] ) ? $current : '';
+		$views   = array();
+		$all     = $this->store->find( array( 'per_page' => 1 ) )['total'];
+
+		$views['all'] = sprintf(
+			'<a href="%1$s"%2$s>%3$s <span class="count">(%4$s)</span></a>',
+			esc_url( LogPage::url() ),
+			'' === $current ? ' class="current" aria-current="page"' : '',
+			esc_html__( 'All', 'activity-log-with-undo' ),
+			esc_html( number_format_i18n( $all ) )
+		);
+		foreach ( self::areas() as $key => $area ) {
+			$total         = $this->store->find(
+				array(
+					'recorder' => $area['recorders'],
+					'per_page' => 1,
+				)
+			)['total'];
+			$views[ $key ] = sprintf(
+				'<a href="%1$s"%2$s>%3$s <span class="count">(%4$s)</span></a>',
+				esc_url( LogPage::url( array( 'alu_area' => $key ) ) ),
+				$key === $current ? ' class="current" aria-current="page"' : '',
+				esc_html( $area['label'] ),
+				esc_html( number_format_i18n( $total ) )
+			);
+		}
+
+		return $views;
 	}
 
 	/**
@@ -192,7 +282,6 @@ final class EntriesTable extends \WP_List_Table {
 			'change' => __( 'Change', 'activity-log-with-undo' ),
 			'user'   => __( 'Who', 'activity-log-with-undo' ),
 			'when'   => __( 'When', 'activity-log-with-undo' ),
-			'undo'   => __( 'Undo', 'activity-log-with-undo' ),
 		);
 	}
 
@@ -271,12 +360,17 @@ final class EntriesTable extends \WP_List_Table {
 			);
 		}
 
+		$state = $this->state( $item );
+		if ( '' !== $state ) {
+			$meta[] = $state;
+		}
+
 		return sprintf(
 			'<a class="row-title" href="%1$s">%2$s</a><div class="alu-meta">%3$s</div>%4$s',
 			esc_url( LogPage::url( array( 'entry' => $item->id ) ) ),
 			esc_html( $this->registry->describe( $item ) ),
 			implode( ' <span aria-hidden="true">&middot;</span> ', $meta ),
-			$this->row_actions( $this->row_links( $item ) )
+			$this->row_actions( $this->row_links( $item ), true )
 		);
 	}
 
@@ -287,9 +381,11 @@ final class EntriesTable extends \WP_List_Table {
 	 * @return array<string, string>
 	 */
 	private function row_links( Entry $item ): array {
-		$links = array(
-			'details' => sprintf( '<a href="%1$s">%2$s</a>', esc_url( LogPage::url( array( 'entry' => $item->id ) ) ), esc_html__( 'Details and differences', 'activity-log-with-undo' ) ),
-		);
+		$links = array();
+		if ( Access::can_view( $item ) && $item->undoable && ! $item->is_undone() ) {
+			$links['undo'] = LogPage::undo_link( $item, $this->also( $item ), false, false, true, $this->registry->describe( $item ) );
+		}
+		$links['details'] = sprintf( '<a href="%1$s">%2$s</a>', esc_url( LogPage::url( array( 'entry' => $item->id ) ) ), esc_html__( 'Details and differences', 'activity-log-with-undo' ) );
 		if ( Rollback::allowed() && 'rollback' !== $item->event && Access::can_view( $item ) ) {
 			$links['rollback'] = sprintf(
 				'<a href="%1$s">%2$s</a>',
@@ -305,6 +401,10 @@ final class EntriesTable extends \WP_List_Table {
 				),
 				esc_html__( 'Roll back to just before this', 'activity-log-with-undo' )
 			);
+		}
+
+		foreach ( Handoff::links( $item ) as $key => $link ) {
+			$links[ 'handoff_' . $key ] = sprintf( '<a href="%1$s">%2$s</a>', esc_url( $link['url'] ), esc_html( $link['label'] ) );
 		}
 
 		return $links;
@@ -339,12 +439,12 @@ final class EntriesTable extends \WP_List_Table {
 	}
 
 	/**
-	 * Undo, Redo, or why not.
+	 * What became of an entry: undone, hidden, or logged only. Nothing for an entry that can be undone.
 	 *
 	 * @param Entry $item Entry.
-	 * @return string
+	 * @return string HTML.
 	 */
-	protected function column_undo( $item ): string {
+	private function state( Entry $item ): string {
 		if ( $item->is_undone() ) {
 			return sprintf(
 				'<a class="alu-status" href="%1$s"><span class="axle-badge axle-badge--neutral">%2$s</span></a>',
@@ -360,7 +460,7 @@ final class EntriesTable extends \WP_List_Table {
 			return '<span class="alu-status axle-badge axle-badge--neutral">' . esc_html__( 'Logged only', 'activity-log-with-undo' ) . '</span>';
 		}
 
-		return LogPage::undo_link( $item, $this->also( $item ), false );
+		return '';
 	}
 
 	/**
@@ -385,56 +485,78 @@ final class EntriesTable extends \WP_List_Table {
 	}
 
 	/**
-	 * Search and filters above the table.
+	 * Whether any of the filters in "More filters" is set.
+	 *
+	 * @return bool
+	 */
+	private static function more_filters_set(): bool {
+		foreach ( array( 'alu_event', 'alu_user', 'alu_via', 'alu_from', 'alu_to', 'alu_object' ) as $key ) {
+			if ( '' !== self::filter( $key ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Search, and the rest of the filters behind "More filters".
 	 */
 	public function toolbar(): void {
+		$area = sanitize_key( self::filter( 'alu_area' ) );
 		?>
+		<?php if ( isset( self::areas()[ $area ] ) ) : ?>
+			<input type="hidden" name="alu_area" value="<?php echo esc_attr( $area ); ?>">
+		<?php endif; ?>
 		<div class="axle-toolbar alu-filters" role="search" aria-label="<?php esc_attr_e( 'Search and filter the log', 'activity-log-with-undo' ); ?>">
 			<label class="screen-reader-text" for="alu-search"><?php esc_html_e( 'Search the log', 'activity-log-with-undo' ); ?></label>
 			<input type="search" id="alu-search" name="s" value="<?php echo esc_attr( self::filter( 's' ) ); ?>" placeholder="<?php esc_attr_e( 'Search the log', 'activity-log-with-undo' ); ?>">
-
-			<label class="screen-reader-text" for="alu-event"><?php esc_html_e( 'Event', 'activity-log-with-undo' ); ?></label>
-			<select name="alu_event" id="alu-event">
-				<option value=""><?php esc_html_e( 'All events', 'activity-log-with-undo' ); ?></option>
-				<?php foreach ( $this->registry->all() as $recorder ) : ?>
-					<optgroup label="<?php echo esc_attr( $recorder->label() ); ?>">
-						<?php foreach ( $recorder->events() as $event => $label ) : ?>
-							<option value="<?php echo esc_attr( $event ); ?>" <?php selected( self::filter( 'alu_event' ), $event ); ?>><?php echo esc_html( $label ); ?></option>
+			<?php submit_button( __( 'Search', 'activity-log-with-undo' ), '', 'filter_action', false, array( 'id' => 'alu-filter' ) ); ?>
+			<details class="alu-more"<?php echo self::more_filters_set() ? ' open' : ''; ?>>
+				<summary><?php esc_html_e( 'More filters', 'activity-log-with-undo' ); ?></summary>
+				<div class="alu-more__fields">
+					<label for="alu-event"><?php esc_html_e( 'Event', 'activity-log-with-undo' ); ?></label>
+					<select name="alu_event" id="alu-event">
+						<option value=""><?php esc_html_e( 'All events', 'activity-log-with-undo' ); ?></option>
+						<?php foreach ( $this->registry->all() as $recorder ) : ?>
+							<optgroup label="<?php echo esc_attr( $recorder->label() ); ?>">
+								<?php foreach ( $recorder->events() as $event => $label ) : ?>
+									<option value="<?php echo esc_attr( $event ); ?>" <?php selected( self::filter( 'alu_event' ), $event ); ?>><?php echo esc_html( $label ); ?></option>
+								<?php endforeach; ?>
+							</optgroup>
 						<?php endforeach; ?>
-					</optgroup>
-				<?php endforeach; ?>
-				<option value="undo" <?php selected( self::filter( 'alu_event' ), 'undo' ); ?>><?php esc_html_e( 'Undo', 'activity-log-with-undo' ); ?></option>
-			</select>
+						<option value="undo" <?php selected( self::filter( 'alu_event' ), 'undo' ); ?>><?php esc_html_e( 'Undo', 'activity-log-with-undo' ); ?></option>
+					</select>
 
-			<label class="screen-reader-text" for="alu-user"><?php esc_html_e( 'User', 'activity-log-with-undo' ); ?></label>
-			<select name="alu_user" id="alu-user">
-				<option value=""><?php esc_html_e( 'All users', 'activity-log-with-undo' ); ?></option>
-				<option value="0" <?php selected( self::filter( 'alu_user' ), '0' ); ?>><?php esc_html_e( 'System (no user)', 'activity-log-with-undo' ); ?></option>
-				<?php foreach ( $this->store->actors() as $user_id ) : ?>
-					<?php $user = get_userdata( $user_id ); ?>
-					<option value="<?php echo esc_attr( (string) $user_id ); ?>" <?php selected( self::filter( 'alu_user' ), (string) $user_id ); ?>><?php echo esc_html( $user ? $user->user_login : '#' . $user_id ); ?></option>
-				<?php endforeach; ?>
-			</select>
+					<label for="alu-user"><?php esc_html_e( 'User', 'activity-log-with-undo' ); ?></label>
+					<select name="alu_user" id="alu-user">
+						<option value=""><?php esc_html_e( 'All users', 'activity-log-with-undo' ); ?></option>
+						<option value="0" <?php selected( self::filter( 'alu_user' ), '0' ); ?>><?php esc_html_e( 'System (no user)', 'activity-log-with-undo' ); ?></option>
+						<?php foreach ( $this->store->actors() as $user_id ) : ?>
+							<?php $user = get_userdata( $user_id ); ?>
+							<option value="<?php echo esc_attr( (string) $user_id ); ?>" <?php selected( self::filter( 'alu_user' ), (string) $user_id ); ?>><?php echo esc_html( $user ? $user->user_login : '#' . $user_id ); ?></option>
+						<?php endforeach; ?>
+					</select>
 
-			<label class="screen-reader-text" for="alu-via"><?php esc_html_e( 'Made through', 'activity-log-with-undo' ); ?></label>
-			<select name="alu_via" id="alu-via">
-				<option value=""><?php esc_html_e( 'Any source', 'activity-log-with-undo' ); ?></option>
-				<?php foreach ( Context::VIAS as $via ) : ?>
-					<option value="<?php echo esc_attr( $via ); ?>" <?php selected( self::filter( 'alu_via' ), $via ); ?>><?php echo esc_html( LogPage::via_label( $via ) ); ?></option>
-				<?php endforeach; ?>
-			</select>
+					<label for="alu-via"><?php esc_html_e( 'Made through', 'activity-log-with-undo' ); ?></label>
+					<select name="alu_via" id="alu-via">
+						<option value=""><?php esc_html_e( 'Any source', 'activity-log-with-undo' ); ?></option>
+						<?php foreach ( Context::VIAS as $via ) : ?>
+							<option value="<?php echo esc_attr( $via ); ?>" <?php selected( self::filter( 'alu_via' ), $via ); ?>><?php echo esc_html( LogPage::via_label( $via ) ); ?></option>
+						<?php endforeach; ?>
+					</select>
 
-			<label for="alu-from"><?php esc_html_e( 'From', 'activity-log-with-undo' ); ?></label>
-			<input type="date" name="alu_from" id="alu-from" value="<?php echo esc_attr( self::filter( 'alu_from' ) ); ?>">
-			<label for="alu-to"><?php esc_html_e( 'To', 'activity-log-with-undo' ); ?></label>
-			<input type="date" name="alu_to" id="alu-to" value="<?php echo esc_attr( self::filter( 'alu_to' ) ); ?>">
+					<label for="alu-from"><?php esc_html_e( 'From', 'activity-log-with-undo' ); ?></label>
+					<input type="date" name="alu_from" id="alu-from" value="<?php echo esc_attr( self::filter( 'alu_from' ) ); ?>">
+					<label for="alu-to"><?php esc_html_e( 'To', 'activity-log-with-undo' ); ?></label>
+					<input type="date" name="alu_to" id="alu-to" value="<?php echo esc_attr( self::filter( 'alu_to' ) ); ?>">
 
-			<label class="screen-reader-text" for="alu-object"><?php esc_html_e( 'Object', 'activity-log-with-undo' ); ?></label>
-			<input type="text" name="alu_object" id="alu-object" class="alu-object" placeholder="<?php esc_attr_e( 'Object ID or name', 'activity-log-with-undo' ); ?>" value="<?php echo esc_attr( self::filter( 'alu_object' ) ); ?>">
+					<label for="alu-object"><?php esc_html_e( 'Object', 'activity-log-with-undo' ); ?></label>
+					<input type="text" name="alu_object" id="alu-object" class="alu-object" placeholder="<?php esc_attr_e( 'Object ID or name', 'activity-log-with-undo' ); ?>" value="<?php echo esc_attr( self::filter( 'alu_object' ) ); ?>">
 
-			<span class="axle-toolbar__end">
-				<?php submit_button( __( 'Filter', 'activity-log-with-undo' ), '', 'filter_action', false, array( 'id' => 'alu-filter' ) ); ?>
-			</span>
+					<?php submit_button( __( 'Apply filters', 'activity-log-with-undo' ), 'secondary', 'filter_apply', false, array( 'id' => 'alu-apply' ) ); ?>
+				</div>
+			</details>
 		</div>
 		<?php
 	}
