@@ -125,6 +125,42 @@ namespace AryanX\Axle\ActivityLogWithUndo\Tests\Unit {
 			$this->assertSame( array( array( 77, true ) ), $restorer->calls );
 		}
 
+		public function test_the_trash_is_heard_on_its_real_hook_and_linked_at_its_real_page(): void {
+			\Brain\Monkey\Actions\expectAdded( 'axle_category_tag_trash_trashed' )->once();
+			\Brain\Monkey\Actions\expectAdded( 'axle_category_tag_trash_before_merge' )->once();
+			\Brain\Monkey\Actions\expectAdded( 'axle_category_tag_trash_merged' )->once();
+			Functions\when( 'admin_url' )->alias(
+				static function ( $path = '' ) {
+					return 'https://example.test/wp-admin/' . $path;
+				}
+			);
+			Functions\when( 'add_query_arg' )->alias(
+				static function ( $args, $url ) {
+					return $url . '&' . http_build_query( $args );
+				}
+			);
+
+			$trash = new CategoryTagTrash();
+			$trash->register();
+			$trash->register();
+
+			$this->assertStringContainsString( 'page=axle-category-tag-trash', CategoryTagTrash::url() );
+			$this->assertStringContainsString( 's=Recipes', CategoryTagTrash::url( 'Recipes' ) );
+		}
+
+		public function test_a_merge_is_logged_as_one_merge_not_as_a_term_deletion(): void {
+			$trash    = new CategoryTagTrash();
+			$recorder = new TermsRecorder( $this->logger(), $trash );
+			$trash->log_merges();
+
+			$trash->merge_started();
+			$recorder->before_delete( 4, 'post_tag' );
+			$recorder->deleted( 4, 40, 'post_tag' );
+			$trash->merge_finished();
+
+			$this->assertSame( array(), $this->rows );
+		}
+
 		public function test_without_category_tag_trash_its_items_cannot_be_restored(): void {
 			$result = ( new CategoryTagTrash() )->restore( 77 );
 

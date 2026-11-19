@@ -100,6 +100,29 @@ final class Rollback {
 	}
 
 	/**
+	 * The "this morning" preset. Before 6 am this morning has not happened yet, so it says "Yesterday 6 am".
+	 *
+	 * @param int           $now  Unix time now.
+	 * @param \DateTimeZone $zone Site time zone.
+	 * @return array{label: string, time: int}
+	 */
+	public static function morning( int $now, \DateTimeZone $zone ): array {
+		$today = ( new \DateTimeImmutable( '@' . $now ) )->setTimezone( $zone );
+		$six   = $today->setTime( 6, 0 );
+		if ( $six->getTimestamp() > $now ) {
+			return array(
+				'label' => __( 'Yesterday 6 am', 'activity-log-with-undo' ),
+				'time'  => $six->modify( '-1 day' )->getTimestamp(),
+			);
+		}
+
+		return array(
+			'label' => __( 'This morning (6 am)', 'activity-log-with-undo' ),
+			'time'  => $six->getTimestamp(),
+		);
+	}
+
+	/**
 	 * The moments the screen offers.
 	 *
 	 * @return array<string, array{label: string, time: int}>
@@ -107,16 +130,12 @@ final class Rollback {
 	public function presets(): array {
 		$now     = time();
 		$zone    = wp_timezone();
-		$morning = ( new \DateTimeImmutable( 'today 06:00', $zone ) )->getTimestamp();
 		$presets = array(
 			'hour'      => array(
 				'label' => __( '1 hour ago', 'activity-log-with-undo' ),
 				'time'  => $now - HOUR_IN_SECONDS,
 			),
-			'morning'   => array(
-				'label' => __( 'This morning (6 am)', 'activity-log-with-undo' ),
-				'time'  => $morning > $now ? $morning - DAY_IN_SECONDS : $morning,
-			),
+			'morning'   => self::morning( $now, $zone ),
 			'yesterday' => array(
 				'label' => __( 'Start of yesterday', 'activity-log-with-undo' ),
 				'time'  => ( new \DateTimeImmutable( 'yesterday 00:00', $zone ) )->getTimestamp(),

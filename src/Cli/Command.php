@@ -227,6 +227,63 @@ final class Command {
 	}
 
 	/**
+	 * Lists the changes to one post that revisions do not keep.
+	 *
+	 * Status, slug, author, template, featured image, terms, sticky and
+	 * password changes, newest first. The editor panel shows the same list.
+	 *
+	 * ## OPTIONS
+	 *
+	 * <post_id>
+	 * : Post ID.
+	 *
+	 * [--limit=<number>]
+	 * : How many. Default 20, at most 100.
+	 *
+	 * [--fields=<fields>]
+	 * : Fields to show. Default id,created,user,via,description,undoable,undone_by.
+	 *
+	 * [--format=<format>]
+	 * : table, csv, json, yaml, count or ids.
+	 * ---
+	 * default: table
+	 * ---
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     wp activity-log-with-undo post-activity 42
+	 *     wp activity-log-with-undo post-activity 42 --format=json
+	 *
+	 * @subcommand post-activity
+	 *
+	 * @param array $args       Positional arguments.
+	 * @param array $assoc_args Named arguments.
+	 */
+	public function post_activity( array $args, array $assoc_args ): void {
+		$rows = $this->abilities->list_post_activity(
+			array(
+				'post_id' => (int) $args[0],
+				'limit'   => (int) ( $assoc_args['limit'] ?? 20 ),
+			)
+		);
+		if ( $rows instanceof \WP_Error ) {
+			\WP_CLI::error( $rows->get_error_message() );
+			return;
+		}
+		$format = (string) ( $assoc_args['format'] ?? 'table' );
+		if ( 'count' === $format ) {
+			\WP_CLI::line( (string) count( $rows ) );
+			return;
+		}
+		if ( 'ids' === $format ) {
+			\WP_CLI::line( implode( ' ', array_column( $rows, 'id' ) ) );
+			return;
+		}
+		$fields = isset( $assoc_args['fields'] ) ? explode( ',', (string) $assoc_args['fields'] ) : array( 'id', 'created', 'user', 'via', 'description', 'undoable', 'undone_by' );
+		\WP_CLI\Utils\format_items( $format, $rows, $fields );
+	}
+
+	/**
 	 * Shows one change with its before and after state.
 	 *
 	 * ## OPTIONS
@@ -359,7 +416,7 @@ final class Command {
 	 * : Only undo changes by this user: ID, login or email.
 	 *
 	 * [--area=<area>]
-	 * : Only undo changes of one area: options, plugins, themes, users, posts, terms, menus or site_editor.
+	 * : Only undo changes of one area: options, plugins, themes, users, posts, terms, menus, site_editor or siblings.
 	 *
 	 * [--stop-on-conflict]
 	 * : Stop at the first change that clashes with a later one. Default: skip it and carry on.

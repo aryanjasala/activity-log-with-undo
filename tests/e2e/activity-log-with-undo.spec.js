@@ -305,8 +305,9 @@ test.describe( 'Activity Log with Undo', () => {
 		const postId = wp( 'post', 'create', '--post_title=Searchable soup', '--post_status=draft', '--porcelain' );
 
 		await page.goto( PAGE );
+		await page.locator( '.alu-more summary' ).click();
 		await page.locator( '#alu-event' ).selectOption( 'post_created' );
-		await page.locator( '#alu-filter' ).click();
+		await page.locator( '#alu-apply' ).click();
 		await expect( page.locator( '#the-list tr' ) ).toHaveCount( 1 );
 		await expect( page.locator( '#the-list' ) ).toContainText( 'Searchable soup' );
 
@@ -350,7 +351,7 @@ test.describe( 'Activity Log with Undo', () => {
 		wp( 'activity-log-with-undo', 'settings', '--admin-bar=on' );
 		await page.goto( '/wp-admin/index.php' );
 		const node = page.locator( '#wp-admin-bar-activity-log-with-undo > a' );
-		await expect( node ).toContainText( 'Undo last change' );
+		await expect( node ).toContainText( 'Undo:' );
 		await node.click();
 		await expect( page ).toHaveURL( /index\.php/ );
 		await expect( page.locator( '.alu-notice' ) ).toContainText( 'Undid 1 change' );
@@ -682,7 +683,8 @@ test.describe( 'Activity Log with Undo', () => {
 		};
 
 		const listed = await rest( 'GET', '/wp-abilities/v1/abilities?category=activity-log-with-undo' );
-		expect( listed.body.map( ( ability ) => ability.name ).sort() ).toEqual( [ 'activity-log-with-undo/get-entry', 'activity-log-with-undo/list-activity', 'activity-log-with-undo/list-alert-rules', 'activity-log-with-undo/preview-rollback', 'activity-log-with-undo/run-rollback', 'activity-log-with-undo/send-test-alert', 'activity-log-with-undo/set-alert-enabled', 'activity-log-with-undo/undo-change' ] );
+		expect( listed.body.map( ( ability ) => ability.name ).sort() ).toEqual( [ 'activity-log-with-undo/get-entry', 'activity-log-with-undo/list-activity', 'activity-log-with-undo/list-alert-rules',
+				'activity-log-with-undo/list-post-activity', 'activity-log-with-undo/preview-rollback', 'activity-log-with-undo/run-rollback', 'activity-log-with-undo/send-test-alert', 'activity-log-with-undo/set-alert-enabled', 'activity-log-with-undo/undo-change' ] );
 		expect( listed.body.find( ( ability ) => ability.name.endsWith( 'undo-change' ) ).meta.annotations ).toMatchObject( { destructive: true, readonly: false } );
 		// MCP clients only list abilities marked public.
 		expect( JSON.parse( wpEval( `echo wp_json_encode( array_values( array_filter( array_map( function ( $ability ) { $meta = $ability->get_meta(); return ( ! empty( $meta['public'] ) && ! empty( $meta['mcp']['public'] ) ) ? '' : $ability->get_name(); }, wp_get_abilities() ), function ( $name ) { return 0 === strpos( $name, 'activity-log-with-undo/' ); } ) ) );` ) ) ).toEqual( [] );

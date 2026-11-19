@@ -10,6 +10,7 @@ namespace AryanX\Axle\ActivityLogWithUndo;
 use AryanX\Axle\ActivityLogWithUndo\Admin\LogPage;
 use AryanX\Axle\ActivityLogWithUndo\Alerts\Alerts;
 use AryanX\Axle\ActivityLogWithUndo\Alerts\Rules;
+use AryanX\Axle\ActivityLogWithUndo\Recorders\PostsRecorder;
 use AryanX\Axle\ActivityLogWithUndo\Recorders\Registry;
 
 defined( 'ABSPATH' ) || exit;
@@ -216,6 +217,43 @@ final class Abilities implements Service {
 			),
 			array( $this, 'list_activity' ),
 			$can,
+			array(
+				'readonly'   => true,
+				'idempotent' => true,
+			)
+		);
+
+		$this->ability(
+			'list-post-activity',
+			__( 'List the activity of a post', 'activity-log-with-undo' ),
+			__( 'The changes to one post that revisions do not keep: status, slug, author, template, featured image, terms, sticky and password, newest first, with who made each change and whether it can be undone. Needs the right to edit that post.', 'activity-log-with-undo' ),
+			array(
+				'type'                 => 'object',
+				'properties'           => array(
+					'post_id' => array(
+						'type'    => 'integer',
+						'minimum' => 1,
+					),
+					'limit'   => array(
+						'type'    => 'integer',
+						'minimum' => 1,
+						'maximum' => 100,
+						'default' => 20,
+					),
+				),
+				'required'             => array( 'post_id' ),
+				'additionalProperties' => false,
+			),
+			array(
+				'type'  => 'array',
+				'items' => $entry,
+			),
+			array( $this, 'list_post_activity' ),
+			function ( $input = null ): bool {
+				$post_id = (int) ( ( (array) $input )['post_id'] ?? 0 );
+
+				return $post_id > 0 && current_user_can( 'edit_post', $post_id );
+			},
 			array(
 				'readonly'   => true,
 				'idempotent' => true,
@@ -698,6 +736,31 @@ final class Abilities implements Service {
 	}
 
 	/**
+	 * Ability: the changes to one post that revisions do not keep.
+	 *
+	 * @param array|null $input Ability input: post_id, limit.
+	 * @return array|\WP_Error
+	 */
+	public function list_post_activity( $input = null ) {
+		$input   = (array) $input;
+		$post_id = (int) ( $input['post_id'] ?? 0 );
+		$post    = get_post( $post_id );
+		if ( ! $post ) {
+			return new \WP_Error( 'activity_log_with_undo_not_found', __( 'That post does not exist.', 'activity-log-with-undo' ), array( 'status' => 404 ) );
+		}
+		$found = $this->store->find(
+			array(
+				'object_type' => $post->post_type,
+				'object_id'   => (string) $post_id,
+				'event'       => PostsRecorder::PANEL_EVENTS,
+				'per_page'    => max( 1, min( 100, (int) ( $input['limit'] ?? 20 ) ) ),
+			)
+		);
+
+		return array_map( array( $this, 'summary' ), $found['entries'] );
+	}
+
+	/**
 	 * Ability: one entry with its states and undo status.
 	 *
 	 * @param array|null $input Ability input.
@@ -733,8 +796,8 @@ final class Abilities implements Service {
 
 		$check = $this->undoer->check( $entry->id );
 		$data  = $this->summary( $entry ) + array(
-			'before' => $entry->before(),
-			'after'  => $entry->after(),
+			'before' => $entry->shown_before(),
+			'after'  => $entry->shown_after(),
 		);
 
 		if ( $check instanceof \WP_Error ) {

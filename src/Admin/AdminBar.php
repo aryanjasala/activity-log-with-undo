@@ -62,6 +62,27 @@ final class AdminBar implements Service {
 	}
 
 	/**
+	 * The label: "Undo: changed Tagline", short enough for the bar.
+	 *
+	 * @param string $description What the change was, as the log words it.
+	 * @return string
+	 */
+	public static function label( string $description ): string {
+		$short = wp_html_excerpt( $description, 32, '…' );
+		$short = '' === $short ? $short : strtolower( substr( $short, 0, 1 ) ) . substr( $short, 1 );
+
+		/**
+		 * Filters the admin bar label of the undo item.
+		 *
+		 * @param string $label       Default "Undo: " and a short, lower-cased description of the change.
+		 * @param string $description Full description of the change.
+		 */
+		$label = (string) apply_filters( 'activity_log_with_undo_admin_bar_label', sprintf( /* translators: %s: a short description of the change, e.g. "changed Tagline". */ __( 'Undo: %s', 'activity-log-with-undo' ), $short ), $description );
+
+		return '' !== $label ? $label : __( 'Undo last change', 'activity-log-with-undo' );
+	}
+
+	/**
 	 * Adds "Undo last change".
 	 *
 	 * @param mixed $admin_bar Admin bar (WP_Admin_Bar).
@@ -80,11 +101,13 @@ final class AdminBar implements Service {
 		$admin_bar->add_node(
 			array(
 				'id'    => 'activity-log-with-undo',
-				'title' => '<span class="ab-icon dashicons dashicons-undo" aria-hidden="true"></span><span class="ab-label">' . esc_html__( 'Undo last change', 'activity-log-with-undo' ) . '</span>',
+				'title' => '<span class="ab-icon dashicons dashicons-undo" aria-hidden="true"></span><span class="ab-label">' . esc_html( self::label( $description ) ) . '</span>',
 				'href'  => LogPage::undo_url( $entry->id, false, true ),
 				'meta'  => array( 'title' => $description ),
 			)
 		);
+		// Core hides nodes it does not list below 782 px; this keeps the icon.
+		AxleUi::admin_bar_mobile( 'activity-log-with-undo', 'dashicons-undo' );
 		$admin_bar->add_node(
 			array(
 				'parent' => 'activity-log-with-undo',

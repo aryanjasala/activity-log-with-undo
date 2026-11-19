@@ -26,10 +26,97 @@ final class CategoryTagTrash {
 	private array $trashed = array();
 
 	/**
+	 * Whether a merge is running. Its delete and its moves are logged as one merge, not one by one.
+	 *
+	 * @var bool
+	 */
+	private bool $merging = false;
+
+	/**
+	 * Whether the hooks are in.
+	 *
+	 * @var bool
+	 */
+	private bool $registered = false;
+
+	/**
+	 * Whether something logs merges, so the delete inside a merge is not logged on its own.
+	 *
+	 * @var bool
+	 */
+	private bool $logs_merges = false;
+
+	/**
+	 * Page slug of the Category & Tag Trash screen.
+	 */
+	public const PAGE = 'axle-category-tag-trash';
+
+	/**
 	 * Listens for terms landing in the trash.
 	 */
 	public function register(): void {
-		add_action( 'category_tag_trash_trashed', array( $this, 'trashed' ), 10, 2 );
+		if ( $this->registered ) {
+			return;
+		}
+		$this->registered = true;
+		add_action( 'axle_category_tag_trash_trashed', array( $this, 'trashed' ), 10, 2 );
+		add_filter( 'activity_log_with_undo_should_log', array( $this, 'quiet_during_merge' ), 10, 2 );
+		add_action( 'axle_category_tag_trash_before_merge', array( $this, 'merge_started' ), 10, 0 );
+		add_action( 'axle_category_tag_trash_merged', array( $this, 'merge_finished' ), 99, 0 );
+	}
+
+	/**
+	 * While a merge runs, the posts it moves are not logged one by one: the merge is one entry.
+	 *
+	 * @param mixed  $log   Whether to log.
+	 * @param string $event Event.
+	 * @return mixed
+	 */
+	public function quiet_during_merge( $log, $event = '' ) {
+		return $this->merging() && 'post_terms_changed' === $event ? false : $log;
+	}
+
+	/**
+	 * A merge starts.
+	 */
+	public function merge_started(): void {
+		$this->merging = true;
+	}
+
+	/**
+	 * A merge ended.
+	 */
+	public function merge_finished(): void {
+		$this->merging = false;
+	}
+
+	/**
+	 * Whether a merge is running right now.
+	 *
+	 * @return bool
+	 */
+	public function merging(): bool {
+		return $this->merging && $this->logs_merges;
+	}
+
+	/**
+	 * Says that merges are logged as merges.
+	 */
+	public function log_merges(): void {
+		$this->logs_merges = true;
+	}
+
+	/**
+	 * Whether a trash item is still in the trash.
+	 *
+	 * @param int $item_id Trash item ID.
+	 * @return bool
+	 */
+	public function has_item( int $item_id ): bool {
+		$plugin = $this->plugin();
+		$trash  = $plugin && method_exists( $plugin, 'trash' ) ? $plugin->trash() : null;
+
+		return is_object( $trash ) && method_exists( $trash, 'get' ) && null !== $trash->get( $item_id );
 	}
 
 	/**
@@ -82,12 +169,13 @@ final class CategoryTagTrash {
 	}
 
 	/**
-	 * Link to the Category & Tag Trash screen.
+	 * Link to the Category & Tag Trash screen, optionally showing one term.
 	 *
+	 * @param string $search Term name to show.
 	 * @return string
 	 */
-	public static function url(): string {
-		return admin_url( 'tools.php?page=category-tag-trash' );
+	public static function url( string $search = '' ): string {
+		return add_query_arg( array_filter( array( 's' => $search ) ), admin_url( 'tools.php?page=' . self::PAGE ) );
 	}
 
 	/**

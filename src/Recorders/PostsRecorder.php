@@ -36,7 +36,12 @@ final class PostsRecorder extends BaseRecorder {
 	/**
 	 * Fields of an attribute change.
 	 */
-	private const ATTRIBUTES = array( 'post_name', 'post_parent', 'post_author' );
+	private const ATTRIBUTES = array( 'post_name', 'post_parent', 'post_author', 'post_password' );
+
+	/**
+	 * Events the editor panel lists: changes that revisions do not keep.
+	 */
+	public const PANEL_EVENTS = array( 'post_status_changed', 'post_trashed', 'post_untrashed', 'post_attributes_changed', 'post_featured_image_changed', 'post_template_changed', 'post_terms_changed', 'post_sticky_changed' );
 
 	/**
 	 * Meta keys logged, with their event.
@@ -52,6 +57,20 @@ final class PostsRecorder extends BaseRecorder {
 	 * @var array<string, string>
 	 */
 	private array $meta_before = array();
+
+	/**
+	 * Whether a new post is being inserted: its first terms (the default category, tax_input) belong to its creation.
+	 *
+	 * @var bool
+	 */
+	private bool $inserting = false;
+
+	/**
+	 * Whether a term is being deleted: posts that lose it, or fall back to the default term, are part of that deletion.
+	 *
+	 * @var bool
+	 */
+	private bool $deleting_term = false;
 
 	/**
 	 * Post types logged, cached for the request.
@@ -93,6 +112,8 @@ final class PostsRecorder extends BaseRecorder {
 			'post_attributes_changed'     => __( 'Slug, parent or author changed', 'activity-log-with-undo' ),
 			'post_featured_image_changed' => __( 'Featured image changed', 'activity-log-with-undo' ),
 			'post_template_changed'       => __( 'Template changed', 'activity-log-with-undo' ),
+			'post_terms_changed'          => __( 'Categories, tags or other terms changed', 'activity-log-with-undo' ),
+			'post_sticky_changed'         => __( 'Stick to the top changed', 'activity-log-with-undo' ),
 			'post_deleted'                => __( 'Deleted permanently', 'activity-log-with-undo' ),
 		);
 	}
@@ -109,6 +130,143 @@ final class PostsRecorder extends BaseRecorder {
 		add_action( 'updated_post_meta', array( $this, 'meta_changed' ), 10, 4 );
 		add_action( 'deleted_post_meta', array( $this, 'meta_deleted' ), 10, 3 );
 		add_action( 'before_delete_post', array( $this, 'deleting' ), 10, 2 );
+		add_filter( 'wp_insert_post_data', array( $this, 'insert_starts' ), 10, 4 );
+		add_action( 'wp_insert_post', array( $this, 'insert_ends' ), 10, 0 );
+		add_action( 'pre_delete_term', array( $this, 'term_delete_starts' ), 5, 0 );
+		add_action( 'deleted_term', array( $this, 'term_delete_ends' ), 10, 0 );
+		add_action( 'set_object_terms', array( $this, 'terms_set' ), 10, 6 );
+		add_action( 'post_stuck', array( $this, 'stuck' ), 10, 1 );
+		add_action( 'post_unstuck', array( $this, 'unstuck' ), 10, 1 );
+	}
+
+	/**
+	 * A term is about to be deleted.
+	 */
+	public function term_delete_starts(): void {
+		$this->deleting_term = true;
+	}
+
+	/**
+	 * A term was deleted.
+	 */
+	public function term_delete_ends(): void {
+		$this->deleting_term = false;
+	}
+
+	/**
+	 * A post is about to be written. Remembers when it is a new one.
+	 *
+	 * @param mixed $data      Post data; returned untouched.
+	 * @param mixed $postarr   What was passed to wp_insert_post().
+	 * @param mixed $sanitized Unsanitized post data.
+	 * @param mixed $update    Whether this updates a post.
+	 * @return mixed
+	 */
+	public function insert_starts( $data, $postarr = array(), $sanitized = array(), $update = false ) {
+		$this->inserting = ! $update;
+
+		return $data;
+	}
+
+	/**
+	 * A post was written.
+	 */
+	public function insert_ends(): void {
+		$this->inserting = false;
+	}
+
+	/**
+	 * A post's terms were replaced.
+	 *
+	 * Adding terms to the existing ones (append) is left out: that is how
+	 * Category & Tag Trash re-attaches posts, and it logs those itself.
+	 *
+	 * @param int    $object_id Post ID.
+	 * @param mixed  $terms     Terms given.
+	 * @param array  $tt_ids    New term taxonomy IDs.
+	 * @param string $taxonomy  Taxonomy.
+	 * @param bool   $append    Whether the terms were added to the old ones.
+	 * @param array  $old_tt    Old term taxonomy IDs.
+	 */
+	public function terms_set( $object_id, $terms, $tt_ids, $taxonomy, $append = false, $old_tt = array() ): void {
+		$post = get_post( (int) $object_id );
+		// Only posts: a taxonomy can also hold users, links or other things whose IDs look like a post's.
+		if ( $append || $this->inserting || $this->deleting_term || ! $this->watching( $post ) || 'auto-draft' === $post->post_status || ! is_object_in_taxonomy( $post->post_type, (string) $taxonomy ) ) {
+			return;
+		}
+
+		$old = self::term_ids( (array) $old_tt, (string) $taxonomy );
+		$new = self::term_ids( (array) $tt_ids, (string) $taxonomy );
+		if ( $old === $new ) {
+			return;
+		}
+
+		$this->record(
+			'post_terms_changed',
+			$post->post_type,
+			$post->ID,
+			$post->post_title,
+			array(
+				'taxonomy' => (string) $taxonomy,
+				'terms'    => $old,
+			),
+			array(
+				'taxonomy' => (string) $taxonomy,
+				'terms'    => $new,
+			),
+			true
+		);
+	}
+
+	/**
+	 * Term IDs, sorted, of term taxonomy IDs.
+	 *
+	 * @param array  $tt_ids   Term taxonomy IDs.
+	 * @param string $taxonomy Taxonomy.
+	 * @return int[]
+	 */
+	private static function term_ids( array $tt_ids, string $taxonomy ): array {
+		$ids = array();
+		foreach ( array_unique( array_map( 'intval', $tt_ids ) ) as $tt_id ) {
+			$term = get_term_by( 'term_taxonomy_id', $tt_id, $taxonomy );
+			if ( $term instanceof \WP_Term ) {
+				$ids[] = (int) $term->term_id;
+			}
+		}
+		sort( $ids );
+
+		return $ids;
+	}
+
+	/**
+	 * A post was made sticky.
+	 *
+	 * @param int $post_id Post ID.
+	 */
+	public function stuck( $post_id ): void {
+		$this->sticky_logged( (int) $post_id, true );
+	}
+
+	/**
+	 * A post is not sticky any more.
+	 *
+	 * @param int $post_id Post ID.
+	 */
+	public function unstuck( $post_id ): void {
+		$this->sticky_logged( (int) $post_id, false );
+	}
+
+	/**
+	 * Logs a change to the sticky list.
+	 *
+	 * @param int  $post_id Post ID.
+	 * @param bool $sticky  Whether the post is sticky now.
+	 */
+	private function sticky_logged( int $post_id, bool $sticky ): void {
+		$post = get_post( $post_id );
+		if ( $this->watching( $post ) && 'auto-draft' !== $post->post_status ) {
+			$this->record( 'post_sticky_changed', $post->post_type, $post->ID, $post->post_title, array( 'sticky' => ! $sticky ), array( 'sticky' => $sticky ), true );
+		}
 	}
 
 	/**
@@ -344,6 +502,20 @@ final class PostsRecorder extends BaseRecorder {
 		if ( ! $post ) {
 			return null;
 		}
+		if ( 'post_sticky_changed' === $entry->event ) {
+			return array( 'sticky' => is_sticky( $post->ID ) );
+		}
+		if ( 'post_terms_changed' === $entry->event ) {
+			$taxonomy = (string) ( ( (array) $entry->after() )['taxonomy'] ?? '' );
+			$ids      = taxonomy_exists( $taxonomy ) ? wp_get_object_terms( $post->ID, $taxonomy, array( 'fields' => 'ids' ) ) : array();
+			$ids      = is_wp_error( $ids ) ? array() : array_map( 'intval', $ids );
+			sort( $ids );
+
+			return array(
+				'taxonomy' => $taxonomy,
+				'terms'    => $ids,
+			);
+		}
 
 		$state = array();
 		foreach ( array_keys( (array) $entry->after() ) as $field ) {
@@ -399,6 +571,30 @@ final class PostsRecorder extends BaseRecorder {
 
 			case 'post_attributes_changed':
 				return self::result( wp_update_post( wp_slash( array( 'ID' => $post_id ) + $before ), true ), $message );
+
+			case 'post_sticky_changed':
+				if ( ! empty( $before['sticky'] ) ) {
+					stick_post( $post_id );
+				} else {
+					unstick_post( $post_id );
+				}
+				return true;
+
+			case 'post_terms_changed':
+				$taxonomy = (string) ( $before['taxonomy'] ?? '' );
+				if ( ! taxonomy_exists( $taxonomy ) ) {
+					return self::refuse( __( 'The taxonomy is not registered any more.', 'activity-log-with-undo' ) );
+				}
+				// Terms deleted since are skipped; the rest go back.
+				$ids = array_values(
+					array_filter(
+						array_map( 'intval', (array) ( $before['terms'] ?? array() ) ),
+						static function ( $id ) use ( $taxonomy ) {
+							return get_term( $id, $taxonomy ) instanceof \WP_Term;
+						}
+					)
+				);
+				return self::result( wp_set_object_terms( $post_id, $ids, $taxonomy, false ), __( 'WordPress did not save the terms.', 'activity-log-with-undo' ) );
 
 			case 'post_featured_image_changed':
 			case 'post_template_changed':
@@ -464,12 +660,13 @@ final class PostsRecorder extends BaseRecorder {
 		$kind   = $type ? (string) $type->labels->singular_name : $entry->object_type;
 		$title  = '' !== $entry->object_label ? $entry->object_label : '#' . $entry->object_id;
 		$names  = array(
-			'post_title'   => __( 'title', 'activity-log-with-undo' ),
-			'post_content' => __( 'content', 'activity-log-with-undo' ),
-			'post_excerpt' => __( 'excerpt', 'activity-log-with-undo' ),
-			'post_name'    => __( 'slug', 'activity-log-with-undo' ),
-			'post_parent'  => __( 'parent', 'activity-log-with-undo' ),
-			'post_author'  => __( 'author', 'activity-log-with-undo' ),
+			'post_title'    => __( 'title', 'activity-log-with-undo' ),
+			'post_content'  => __( 'content', 'activity-log-with-undo' ),
+			'post_excerpt'  => __( 'excerpt', 'activity-log-with-undo' ),
+			'post_name'     => __( 'slug', 'activity-log-with-undo' ),
+			'post_parent'   => __( 'parent', 'activity-log-with-undo' ),
+			'post_author'   => __( 'author', 'activity-log-with-undo' ),
+			'post_password' => __( 'password', 'activity-log-with-undo' ),
 		);
 		$fields = implode(
 			', ',
@@ -504,10 +701,61 @@ final class PostsRecorder extends BaseRecorder {
 			case 'post_template_changed':
 				/* translators: 1: content type, e.g. "Page", 2: title. */
 				return sprintf( __( 'Changed the template of the %1$s "%2$s"', 'activity-log-with-undo' ), $kind, $title );
+			case 'post_sticky_changed':
+				if ( ! empty( ( (array) $entry->after() )['sticky'] ) ) {
+					/* translators: 1: content type, e.g. "Post", 2: title. */
+					return sprintf( __( 'Stuck the %1$s "%2$s" to the top of the blog', 'activity-log-with-undo' ), $kind, $title );
+				}
+				/* translators: 1: content type, e.g. "Post", 2: title. */
+				return sprintf( __( 'Unstuck the %1$s "%2$s" from the top of the blog', 'activity-log-with-undo' ), $kind, $title );
+			case 'post_terms_changed':
+				return $this->describe_terms( $entry, $kind, $title );
 			default:
 				/* translators: 1: content type, e.g. "Page", 2: title. */
 				return sprintf( __( 'Deleted the %1$s "%2$s" permanently', 'activity-log-with-undo' ), $kind, $title );
 		}
+	}
+
+	/**
+	 * One line about a terms change: which were added and which removed.
+	 *
+	 * @param Entry  $entry Entry.
+	 * @param string $kind  Content type name.
+	 * @param string $title Post title.
+	 * @return string
+	 */
+	private function describe_terms( Entry $entry, string $kind, string $title ): string {
+		$before   = (array) $entry->before();
+		$after    = (array) $entry->after();
+		$taxonomy = (string) ( $after['taxonomy'] ?? '' );
+		$object   = get_taxonomy( $taxonomy );
+		$label    = $object ? strtolower( (string) $object->labels->name ) : $taxonomy;
+		$names    = static function ( array $ids ) use ( $taxonomy ): string {
+			return implode(
+				', ',
+				array_map(
+					static function ( $id ) use ( $taxonomy ) {
+						$term = get_term( (int) $id, $taxonomy );
+						return $term instanceof \WP_Term ? $term->name : '#' . (int) $id;
+					},
+					$ids
+				)
+			);
+		};
+		$added    = array_values( array_diff( array_map( 'intval', (array) ( $after['terms'] ?? array() ) ), array_map( 'intval', (array) ( $before['terms'] ?? array() ) ) ) );
+		$removed  = array_values( array_diff( array_map( 'intval', (array) ( $before['terms'] ?? array() ) ), array_map( 'intval', (array) ( $after['terms'] ?? array() ) ) ) );
+		$parts    = array();
+		if ( $added ) {
+			/* translators: %s: term names. */
+			$parts[] = sprintf( __( 'added %s', 'activity-log-with-undo' ), $names( $added ) );
+		}
+		if ( $removed ) {
+			/* translators: %s: term names. */
+			$parts[] = sprintf( __( 'removed %s', 'activity-log-with-undo' ), $names( $removed ) );
+		}
+
+		/* translators: 1: taxonomy name, e.g. "categories", 2: content type, 3: title, 4: what changed, e.g. "added News; removed Sport". */
+		return sprintf( __( 'Changed the %1$s of the %2$s "%3$s": %4$s', 'activity-log-with-undo' ), $label, $kind, $title, implode( '; ', $parts ) );
 	}
 
 	/**

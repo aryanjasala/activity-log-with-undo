@@ -9,7 +9,7 @@ namespace AryanX\Axle\ActivityLogWithUndo\Admin;
 
 use AryanX\Axle\ActivityLogWithUndo\Access;
 use AryanX\Axle\ActivityLogWithUndo\Entry;
-use AryanX\Axle\ActivityLogWithUndo\Integrations\CategoryTagTrash;
+use AryanX\Axle\ActivityLogWithUndo\Integrations\Handoff;
 use AryanX\Axle\ActivityLogWithUndo\Logger;
 use AryanX\Axle\ActivityLogWithUndo\Payload;
 use AryanX\Axle\ActivityLogWithUndo\Recorders\OptionsRecorder;
@@ -197,9 +197,11 @@ final class LogPage implements Service {
 	 * @param string[] $also  Descriptions of the other changes undone with it.
 	 * @param bool     $force   Undo even when things changed since.
 	 * @param bool     $primary Whether this is the one main action of the screen.
+	 * @param bool     $as_link A plain link for a row action, not a button.
+	 * @param string   $about   What the change was, for the link's accessible name.
 	 * @return string HTML.
 	 */
-	public static function undo_link( Entry $entry, array $also, bool $force, bool $primary = false ): string {
+	public static function undo_link( Entry $entry, array $also, bool $force, bool $primary = false, bool $as_link = false, string $about = '' ): string {
 		$rolled = 'rollback' === $entry->event;
 		$redo   = null !== $entry->undo_of || $rolled;
 		$also   = array_values( array_map( 'strval', $also ) );
@@ -237,6 +239,10 @@ final class LogPage implements Service {
 			$confirm = sprintf( _n( '%1$s It also undoes %2$d other change saved with it: %3$s.', '%1$s It also undoes %2$d other changes saved with it: %3$s.', count( $also ), 'activity-log-with-undo' ), $confirm, count( $also ), $list );
 		}
 
+		if ( ! $force && in_array( $entry->event, array( 'plugin_updated', 'theme_updated' ), true ) ) {
+			$confirm = __( 'This puts the files of the old version back. Changes the new version made to the database stay as they are.', 'activity-log-with-undo' );
+		}
+
 		$deletes_user = 'user_created' === $entry->event;
 		if ( $deletes_user ) {
 			/* translators: %s: user login. */
@@ -257,10 +263,14 @@ final class LogPage implements Service {
 		 */
 		$confirm = (string) apply_filters( 'activity_log_with_undo_confirm_message', $confirm, $entry, $also, $force );
 
+		$extra = $force ? 'axle-button--danger alu-undo-anyway' : trim( ( $primary ? 'button-primary' : '' ) . ( $redo ? ' alu-redo' : '' ) );
+		$class = trim( ( $as_link ? 'alu-undo--link' : 'button' ) . ' ' . $extra );
+		$aria  = $as_link && '' !== $about ? ' aria-label="' . esc_attr( $label . ': ' . $about ) . '"' : '';
+
 		return sprintf(
-			'<a href="%1$s" class="button %2$s alu-undo" data-alu-entry="%3$d" data-alu-force="%4$d" data-alu-count="%5$d" data-alu-redo="%6$d" data-alu-deletes-user="%7$d" data-alu-also="%8$s" data-alu-confirm="%9$s" data-alu-note="%10$s" data-alu-verb="%11$s">%12$s</a>',
+			'<a href="%1$s" class="%2$s alu-undo" data-alu-entry="%3$d" data-alu-force="%4$d" data-alu-count="%5$d" data-alu-redo="%6$d" data-alu-deletes-user="%7$d" data-alu-also="%8$s" data-alu-confirm="%9$s" data-alu-note="%10$s" data-alu-verb="%11$s"%13$s>%12$s</a>',
 			esc_url( self::undo_url( $entry->id, $force ) ),
-			$force ? 'axle-button--danger alu-undo-anyway' : ( $primary ? 'button-primary' : '' ) . ( $redo ? ' alu-redo' : '' ),
+			esc_attr( $class ),
 			$entry->id,
 			$force ? 1 : 0,
 			$count,
@@ -270,7 +280,8 @@ final class LogPage implements Service {
 			esc_attr( $confirm ),
 			esc_attr( $note ),
 			esc_attr( $verb ),
-			esc_html( $label )
+			esc_html( $label ),
+			$aria // Escaped above.
 		);
 	}
 
@@ -878,6 +889,7 @@ final class LogPage implements Service {
 				<a href="<?php echo esc_url( self::url() ); ?>"><?php esc_html_e( 'Show everything', 'activity-log-with-undo' ); ?></a>
 			</p></div>
 		<?php endif; ?>
+		<?php $table->views(); ?>
 		<form method="get" class="alu-log">
 			<input type="hidden" name="page" value="<?php echo esc_attr( self::SLUG ); ?>">
 			<?php if ( '' !== $set ) : ?>
@@ -1305,9 +1317,9 @@ final class LogPage implements Service {
 				<?php if ( $entry->is_undone() ) : ?>
 					<dt><?php esc_html_e( 'Undone by', 'activity-log-with-undo' ); ?></dt><dd><a href="<?php echo esc_url( self::url( array( 'entry' => (int) $entry->undone_by ) ) ); ?>">#<?php echo esc_html( (string) $entry->undone_by ); ?></a></dd>
 				<?php endif; ?>
-				<?php if ( 'term_deleted' === $entry->event && ! empty( ( (array) $entry->before() )['ctt_item'] ) ) : ?>
-					<dt><?php esc_html_e( 'Kept in', 'activity-log-with-undo' ); ?></dt><dd><a href="<?php echo esc_url( CategoryTagTrash::url() ); ?>"><?php esc_html_e( 'Category & Tag Trash', 'activity-log-with-undo' ); ?></a></dd>
-				<?php endif; ?>
+		<?php foreach ( Handoff::links( $entry ) as $link ) : ?>
+					<dt><?php esc_html_e( 'See also', 'activity-log-with-undo' ); ?></dt><dd><a href="<?php echo esc_url( $link['url'] ); ?>"><?php echo esc_html( $link['label'] ); ?></a></dd>
+						<?php endforeach; ?>
 			</dl>
 			</section>
 
@@ -1364,7 +1376,7 @@ final class LogPage implements Service {
 			return;
 		}
 
-		self::print_diff( DiffView::compare( $entry->before(), $entry->after(), __( 'Before', 'activity-log-with-undo' ), __( 'After', 'activity-log-with-undo' ) ) );
+		self::print_diff( DiffView::compare( $entry->shown_before(), $entry->shown_after(), __( 'Before', 'activity-log-with-undo' ), __( 'After', 'activity-log-with-undo' ) ) );
 	}
 
 	/**
